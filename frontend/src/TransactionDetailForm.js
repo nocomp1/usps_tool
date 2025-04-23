@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
-export default function TransactionDetailForm() {
-  const [projects, setProjects] = useState([]);
+export default function TransactionDetailForm({ projects }) {
+  // projects now comes in as a prop, no local state needed
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [category, setCategory] = useState('Piece');
   const [product, setProduct] = useState('');
@@ -14,15 +14,6 @@ export default function TransactionDetailForm() {
   const [netPostageInput, setNetPostageInput] = useState('');
   const [message, setMessage] = useState('');
 
-  // Fetch existing projects on mount
-  useEffect(() => {
-    fetch('/mailings')
-      .then(res => res.json())
-      .then(data => setProjects(data))
-      .catch(console.error);
-  }, []);
-
-  // When a project is selected, set product and numPieces from project
   const handleProjectChange = e => {
     const id = e.target.value;
     setSelectedProjectId(id);
@@ -30,7 +21,7 @@ export default function TransactionDetailForm() {
     const proj = projects.find(p => String(p.id) === id);
     if (proj) {
       setProduct(proj.product_type);
-      setNumPieces(proj.quantity);                // auto-fill number of pieces
+      setNumPieces(proj.quantity);
       setTotalPostageInput('');
       setDiscountInput('');
       setNetPostageInput('');
@@ -61,7 +52,6 @@ export default function TransactionDetailForm() {
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const newTx = await resp.json();
       setMessage(`Transaction saved (ID ${newTx.id})`);
-      // Clear input fields except numPieces remains read-only
       setCategory('Piece');
       setEntry('5-Digit');
       setPriceCategory('None');
@@ -75,20 +65,18 @@ export default function TransactionDetailForm() {
     }
   };
 
-  // Common style for label-on-top fields
   const colStyle = { display: 'flex', flexDirection: 'column', marginBottom: '0.5rem' };
 
   return (
     <form onSubmit={handleUpdate} style={{ maxWidth: 800, margin: '2rem auto' }}>
       <h2>Transaction Detail</h2>
-
       <div style={colStyle}>
         <label>Project</label>
         <select value={selectedProjectId} onChange={handleProjectChange} required>
           <option value="">-- Select Project --</option>
           {projects.map(p => {
             const desc = p.project_description;
-            const short = desc.length > 40 ? desc.slice(0, 20) + '...' : desc;
+            const short = desc.length > 20 ? desc.slice(0, 20) + '...' : desc;
             return (
               <option key={p.id} value={p.id}>
                 {`${p.project_id}-${short}`}
@@ -100,14 +88,7 @@ export default function TransactionDetailForm() {
 
       {selectedProjectId && (
         <>
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(4, 1fr)',
-              gap: '1rem',
-              marginBottom: '1.5rem'
-            }}
-          >
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '1rem', marginBottom: '1.5rem' }}>
             <div style={colStyle}>
               <label>Category</label>
               <select value={category} onChange={e => setCategory(e.target.value)}>
@@ -143,59 +124,31 @@ export default function TransactionDetailForm() {
 
             <div style={colStyle}>
               <label>Line Price</label>
-              <input
-                type="number"
-                step="0.01"
-                placeholder="Line Price"
-                value={linePrice}
-                onChange={e => setLinePrice(e.target.value)}
-              />
+              <input type="number" step="0.01" placeholder="Line Price" value={linePrice} onChange={e => setLinePrice(e.target.value)} />
             </div>
 
             <div style={colStyle}>
               <label>Number of Pieces</label>
-              <input
-                type="number"
-                placeholder="Number of Pieces"
-                value={numPieces}
-                disabled
-              />
+              <input type="number" value={numPieces} disabled />
             </div>
 
             <div style={colStyle}>
               <label>Total Postage</label>
-              <input
-                type="number"
-                step="0.01"
-                value={totalPostageInput}
-                onChange={e => setTotalPostageInput(e.target.value)}
-              />
+              <input type="number" step="0.01" value={totalPostageInput} onChange={e => setTotalPostageInput(e.target.value)} />
             </div>
 
             <div style={colStyle}>
               <label>Discount</label>
-              <input
-                type="number"
-                step="0.01"
-                value={discountInput}
-                onChange={e => setDiscountInput(e.target.value)}
-              />
+              <input type="number" step="0.01" value={discountInput} onChange={e => setDiscountInput(e.target.value)} />
             </div>
 
             <div style={colStyle}>
               <label>Net Postage</label>
-              <input
-                type="number"
-                step="0.01"
-                value={netPostageInput}
-                onChange={e => setNetPostageInput(e.target.value)}
-              />
+              <input type="number" step="0.01" value={netPostageInput} onChange={e => setNetPostageInput(e.target.value)} />
             </div>
           </div>
 
-          <button type="submit" style={{ padding: '0.5rem 1rem' }}>
-            Update Transaction Details
-          </button>
+          <button type="submit" style={{ padding: '0.5rem 1rem' }}>Update Transaction Details</button>
           {message && <div style={{ marginTop: '1rem' }}>{message}</div>}
         </>
       )}

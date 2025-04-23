@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-export default function CreateProjectForm() {
+export default function CreateProjectForm({ onCreate }) {
   const [projectDescription, setProjectDescription] = useState('');
   const [productType, setProductType]               = useState('Flats');
   const [pieceWeight, setPieceWeight]               = useState('');
@@ -35,6 +35,7 @@ export default function CreateProjectForm() {
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const newProj = await resp.json();
       setMessage(`Created project with ID ${newProj.id}`);
+      onCreate();
       // Clear form
       setProjectDescription(''); setProductType('Flats'); setPieceWeight('');
       setQuantity(''); setTotalPostage(''); setNetPostage(''); setDiscount('');
