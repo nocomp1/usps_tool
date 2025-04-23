@@ -1,11 +1,23 @@
 # Node / React
-node_modules/
-build/
+node_modules/          # any node_modules folder
+frontend/node_modules/  # explicitly cover the React app
+build/                 # CRA’s production build output
 
 # Python
-.venv/
-*.pyc
-__pycache__/
+backend/.venv/         # your Python virtual-env
+*.pyc                  # compiled bytecode
+__pycache__/           # cache folders
+
+# SQLite database
+backend/*.db           # ignore your mailings.db
+
+# Environment files
+*.env                  # dotenv configs (if you ever use them)
+
+# macOS
+.DS_Store
 
 # Editor files
 .vscode/
+*.suo
+*.swp
