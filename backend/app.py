@@ -112,7 +112,37 @@ def create_project():
     db.session.commit()
     return jsonify(proj.to_dict()), 201
 
+
+
+
+
+
 # Transaction details endpoints
+
+@app.route('/transactions/<int:id>', methods=['PUT'])
+def update_transaction(id):
+    tx = TransactionDetail.query.get_or_404(id)
+    data = request.get_json() or {}
+    # update fields:
+    for f in ['category','entry','price_category','line_price',
+              'number_of_pieces','total_postage','discount','net_postage']:
+        if f in data:
+            setattr(tx, f, data[f])
+    db.session.commit()
+    return jsonify(tx.to_dict())
+
+
+@app.route('/transactions/<int:id>', methods=['DELETE'])
+def delete_transaction(id):
+    tx = TransactionDetail.query.get(id)
+    if not tx:
+        return jsonify({'error': 'Not found'}), 404
+    db.session.delete(tx)
+    db.session.commit()
+    return '', 204
+
+
+
 @app.route('/transactions', methods=['GET'])
 def list_transactions():
     txs = TransactionDetail.query.all()
@@ -138,9 +168,9 @@ def create_transaction():
         price_category   = data['price_category'],
         line_price       = float(data['line_price']),
         number_of_pieces = int(data['number_of_pieces']),
-        total_postage    = proj.total_postage,
-        discount         = proj.discount or 0.0,
-        net_postage      = proj.net_postage
+         total_postage    = float(data['total_postage']),
+        discount         = float(data.get('discount', 0.0)),
+        net_postage      = float(data['net_postage'])
     )
     db.session.add(tx)
     db.session.commit()
