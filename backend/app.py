@@ -1,9 +1,10 @@
-from flask import Flask, jsonify, request
+import os
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
-import os
 
-app = Flask(__name__)
+# ─── Flask setup, pointing static_folder at our React build ───────────────
+app = Flask(__name__, static_folder='static', static_url_path='')
 CORS(app)
 
 # Database config (SQLite)
@@ -12,9 +13,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'ma
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Models
-# ──────────────────────────────────────────────────────────────────────────────
+# ─── Models (unchanged) ───────────────────────────────────────────────────
 class Project(db.Model):
     __tablename__ = 'projects'
     id                   = db.Column(db.Integer, primary_key=True)
@@ -71,16 +70,7 @@ class TransactionDetail(db.Model):
             "net_postage": self.net_postage,
         }
 
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Routes
-# ──────────────────────────────────────────────────────────────────────────────
-@app.route('/')
-def hello():
-    return 'Hello, this is your Python API!'
-
-# Projects endpoints
+# ─── API Routes (unchanged) ────────────────────────────────────────────────
 @app.route('/mailings', methods=['GET'])
 def list_projects():
     projects = Project.query.all()
@@ -89,10 +79,7 @@ def list_projects():
 @app.route('/mailings', methods=['POST'])
 def create_project():
     data = request.get_json() or {}
-    required = [
-        'project_description', 'product_type', 'piece_weight',
-        'quantity', 'total_postage', 'net_postage'
-    ]
+    required = ['project_description','product_type','piece_weight','quantity','total_postage','net_postage']
     for field in required:
         if field not in data:
             return jsonify({"error": f"Missing field: {field}"}), 400
@@ -106,42 +93,11 @@ def create_project():
         net_postage         = float(data['net_postage']),
         discount            = float(data.get('discount') or 0.0),
         job_id              = data.get('job_id'),
-        project_id          = data.get('project_id'),
+        project_id          = data.get('project_id')
     )
     db.session.add(proj)
     db.session.commit()
     return jsonify(proj.to_dict()), 201
-
-
-
-
-
-
-# Transaction details endpoints
-
-@app.route('/transactions/<int:id>', methods=['PUT'])
-def update_transaction(id):
-    tx = TransactionDetail.query.get_or_404(id)
-    data = request.get_json() or {}
-    # update fields:
-    for f in ['category','entry','price_category','line_price',
-              'number_of_pieces','total_postage','discount','net_postage']:
-        if f in data:
-            setattr(tx, f, data[f])
-    db.session.commit()
-    return jsonify(tx.to_dict())
-
-
-@app.route('/transactions/<int:id>', methods=['DELETE'])
-def delete_transaction(id):
-    tx = TransactionDetail.query.get(id)
-    if not tx:
-        return jsonify({'error': 'Not found'}), 404
-    db.session.delete(tx)
-    db.session.commit()
-    return '', 204
-
-
 
 @app.route('/transactions', methods=['GET'])
 def list_transactions():
@@ -151,11 +107,11 @@ def list_transactions():
 @app.route('/transactions', methods=['POST'])
 def create_transaction():
     data = request.get_json() or {}
-    req = ['project_id', 'category', 'product', 'entry', 'price_category', 'line_price', 'number_of_pieces']
+    req = ['project_id','category','product','entry','price_category','line_price','number_of_pieces']
     for f in req:
         if f not in data:
             return jsonify({"error": f"Missing field: {f}"}), 400
-    # For simplicity, compute totals as example or fetch from Project
+
     proj = Project.query.get(data['project_id'])
     if not proj:
         return jsonify({"error": "Invalid project_id"}), 400
@@ -168,7 +124,7 @@ def create_transaction():
         price_category   = data['price_category'],
         line_price       = float(data['line_price']),
         number_of_pieces = int(data['number_of_pieces']),
-         total_postage    = float(data['total_postage']),
+        total_postage    = float(data['total_postage']),
         discount         = float(data.get('discount', 0.0)),
         net_postage      = float(data['net_postage'])
     )
@@ -176,12 +132,37 @@ def create_transaction():
     db.session.commit()
     return jsonify(tx.to_dict()), 201
 
+@app.route('/transactions/<int:id>', methods=['PUT'])
+def update_transaction(id):
+    tx = TransactionDetail.query.get_or_404(id)
+    data = request.get_json() or {}
+    for f in ['category','entry','price_category','line_price','number_of_pieces','total_postage','discount','net_postage']:
+        if f in data:
+            setattr(tx, f, data[f])
+    db.session.commit()
+    return jsonify(tx.to_dict())
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Initialize DB
-# ──────────────────────────────────────────────────────────────────────────────
+@app.route('/transactions/<int:id>', methods=['DELETE'])
+def delete_transaction(id):
+    tx = TransactionDetail.query.get(id)
+    if not tx:
+        return jsonify({'error': 'Not found'}), 404
+    db.session.delete(tx)
+    db.session.commit()
+    return '', 204
+
+# ─── React build serving ───────────────────────────────────────────────────
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve_react_app(path):
+    # if a file exists, serve it; otherwise index.html
+    full_path = os.path.join(app.static_folder, path)
+    if path and os.path.exists(full_path):
+        return send_from_directory(app.static_folder, path)
+    return send_from_directory(app.static_folder, 'index.html')
+
+# ─── Initialize DB & run ───────────────────────────────────────────────────
 if __name__ == '__main__':
-    # Create all tables within the Flask application context
     with app.app_context():
         db.create_all()
-    app.run(host='127.0.0.1', port=8000, debug=True)
+    app.run(host='0.0.0.0', port=8000, debug=True)
