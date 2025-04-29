@@ -7,13 +7,21 @@ from flask_sqlalchemy import SQLAlchemy
 app = Flask(__name__, static_folder='static', static_url_path='')
 CORS(app)
 
-# Database config (SQLite)
-basedir = os.path.abspath(os.path.dirname(__file__))
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'mailings.db')
+# ─── Database config (MySQL on RDS) ────────────────────────────────────────
+# Make sure you've installed PyMySQL in your backend/requirements.txt
+DB_USER     = os.environ['DB_USER']
+DB_PASSWORD = os.environ['DB_PASSWORD']
+DB_HOST     = os.environ.get('DB_HOST', 'uspsdb.chyuqasw4rhr.us-east-2.rds.amazonaws.com')
+DB_NAME     = os.environ['DB_NAME']
+
+app.config['SQLALCHEMY_DATABASE_URI'] = (
+    f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
+)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# ─── Models (unchanged) ───────────────────────────────────────────────────
+
+# ─── Models ────────────────────────────────────────────────────────────────
 class Project(db.Model):
     __tablename__ = 'projects'
     id                   = db.Column(db.Integer, primary_key=True)
@@ -70,11 +78,11 @@ class TransactionDetail(db.Model):
             "net_postage": self.net_postage,
         }
 
-# ─── API Routes (unchanged) ────────────────────────────────────────────────
+
+# ─── API Routes ────────────────────────────────────────────────────────────
 @app.route('/mailings', methods=['GET'])
 def list_projects():
-    projects = Project.query.all()
-    return jsonify([p.to_dict() for p in projects])
+    return jsonify([p.to_dict() for p in Project.query.all()])
 
 @app.route('/mailings', methods=['POST'])
 def create_project():
@@ -99,25 +107,17 @@ def create_project():
     db.session.commit()
     return jsonify(proj.to_dict()), 201
 
-
 @app.route('/mailings/<int:id>', methods=['DELETE'])
 def delete_project(id):
     proj = Project.query.get_or_404(id)
-
-    # 1) delete all transactions for this project
     TransactionDetail.query.filter_by(project_id=id).delete()
-
-    # 2) delete the project itself
     db.session.delete(proj)
     db.session.commit()
     return '', 204
 
-
-
 @app.route('/transactions', methods=['GET'])
 def list_transactions():
-    txs = TransactionDetail.query.all()
-    return jsonify([t.to_dict() for t in txs])
+    return jsonify([t.to_dict() for t in TransactionDetail.query.all()])
 
 @app.route('/transactions', methods=['POST'])
 def create_transaction():
@@ -166,15 +166,16 @@ def delete_transaction(id):
     db.session.commit()
     return '', 204
 
+
 # ─── React build serving ───────────────────────────────────────────────────
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve_react_app(path):
-    # if a file exists, serve it; otherwise index.html
     full_path = os.path.join(app.static_folder, path)
     if path and os.path.exists(full_path):
         return send_from_directory(app.static_folder, path)
     return send_from_directory(app.static_folder, 'index.html')
+
 
 # ─── Initialize DB & run ───────────────────────────────────────────────────
 if __name__ == '__main__':
