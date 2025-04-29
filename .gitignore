@@ -21,3 +21,8 @@ backend/*.db           # ignore your mailings.db
 .vscode/
 *.suo
 *.swp
+
+# Elastic Beanstalk Files
+.elasticbeanstalk/*
+!.elasticbeanstalk/*.cfg.yml
+!.elasticbeanstalk/*.global.yml

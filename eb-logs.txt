@@ -1,0 +1,4 @@
+Retrieving logs...
+Logs were saved to /Users/roymcqueen/Desktop/RobertProjects/usps-tool/.elasticbeanstalk/logs/250428_165608
+Logs were saved to /Users/roymcqueen/Desktop/RobertProjects/usps-tool/.elasticbeanstalk/logs/250428_165608
+Updated symlink at /Users/roymcqueen/Desktop/RobertProjects/usps-tool/.elasticbeanstalk/logs/latest
