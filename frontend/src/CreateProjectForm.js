@@ -3,8 +3,8 @@ import React, { useState, useEffect } from 'react';
 export default function CreateProjectForm({ onCreate }) {
   const [rows, setRows] = useState([]);
   const [message, setMessage] = useState('');
+  const [sortOrder, setSortOrder] = useState('desc');
 
-  // Template for a new blank project row
   const blankRow = () => ({
     id: null,
     projectDescription: '',
@@ -18,12 +18,11 @@ export default function CreateProjectForm({ onCreate }) {
     discount: ''
   });
 
-  // Load existing projects on mount, and prepend a blank row
   useEffect(() => {
     fetch('/mailings')
       .then(res => res.json())
       .then(data => {
-        const existingRows = data.map(p => ({
+        const existing = data.map(p => ({
           id: p.id,
           projectDescription: p.project_description,
           projectId: p.project_id || '',
@@ -35,50 +34,67 @@ export default function CreateProjectForm({ onCreate }) {
           netPostage: p.net_postage,
           discount: p.discount || ''
         }));
-        setRows([blankRow(), ...existingRows]);
+        setRows([blankRow(), ...existing]);
       })
-      .catch(err => console.error('Fetch projects failed:', err));
+      .catch(err => console.error('Fetch failed:', err));
   }, [onCreate]);
 
-  // Update a specific field in a row
-  const updateRowField = (index, field, value) => {
+  const updateRowField = (i, field, value) => {
     const newRows = [...rows];
-    newRows[index][field] = value;
+    newRows[i][field] = value;
     setRows(newRows);
   };
 
-  // Save a single row: POST if new, PUT if existing
-  const saveRow = async (index) => {
-    const row = rows[index];
+  const validateRow = row => {
+    const required = [
+      ['projectDescription', 'Project Description'],
+      ['productType', 'Product Type'],
+      ['pieceWeight', 'Piece Weight'],
+      ['quantity', 'Quantity'],
+      ['totalPostage', 'Total Postage'],
+      ['netPostage', 'Net Postage']
+    ];
+    for (let [key, label] of required) {
+      if (!row[key] && row[key] !== 0) {
+        return `${label} is required`;
+      }
+    }
+    return null;
+  };
+
+  const saveRow = async idx => {
+    const row = rows[idx];
+    const err = validateRow(row);
+    if (err) {
+      setMessage(err);
+      return;
+    }
     const payload = {
       project_description: row.projectDescription,
-      product_type: row.productType,
-      piece_weight: parseFloat(row.pieceWeight),
-      quantity: parseInt(row.quantity, 10),
-      total_postage: parseFloat(row.totalPostage),
-      net_postage: parseFloat(row.netPostage),
-      discount: parseFloat(row.discount) || 0,
-      job_id: row.jobId,
-      project_id: row.projectId
+      product_type:        row.productType,
+      piece_weight:        parseFloat(row.pieceWeight),
+      quantity:            parseInt(row.quantity, 10),
+      total_postage:       parseFloat(row.totalPostage),
+      net_postage:         parseFloat(row.netPostage),
+      discount:            parseFloat(row.discount) || 0,
+      job_id:              row.jobId,
+      project_id:          row.projectId
     };
     try {
-      let resp;
-      if (row.id) {
-        resp = await fetch(`/mailings/${row.id}`, {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
-        });
-      } else {
-        resp = await fetch('/mailings', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
-        });
-      }
+      const url = row.id ? `/mailings/${row.id}` : '/mailings';
+      const method = row.id ? 'PUT' : 'POST';
+      const resp = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const result = await resp.json();
-      setMessage(`Saved project ID ${result.id}`);
+      setMessage(`Project ID ${result.id} saved`);
       onCreate();
-      // Refresh list: reload existing rows to get updated data
-      const refreshed = await fetch('/mailings').then(r => r.json());
-      const existingRows = refreshed.map(p => ({
+      // refresh rows
+      const data = await fetch('/mailings').then(r => r.json());
+      const updated = data.map(p => ({
         id: p.id,
         projectDescription: p.project_description,
         projectId: p.project_id || '',
@@ -90,39 +106,59 @@ export default function CreateProjectForm({ onCreate }) {
         netPostage: p.net_postage,
         discount: p.discount || ''
       }));
-      setRows([blankRow(), ...existingRows]);
-    } catch (err) {
-      console.error('Save failed:', err);
-      setMessage(`Error: ${err.message}`);
+      setRows([blankRow(), ...updated]);
+    } catch (e) {
+      console.error(e);
+      setMessage(`Error: ${e.message}`);
     }
   };
 
-  // Delete a single row
-  const deleteRow = async (index) => {
-    const row = rows[index];
+  const deleteRow = async idx => {
+    const row = rows[idx];
     if (row.id) {
+      if (!window.confirm('Delete this project?')) return;
       try {
         const resp = await fetch(`/mailings/${row.id}`, { method: 'DELETE' });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        setMessage(`Deleted project ID ${row.id}`);
-      } catch (err) {
-        console.error('Delete failed:', err);
-        setMessage(`Error: ${err.message}`);
+        setMessage(`Deleted project ${row.id}`);
+      } catch (e) {
+        console.error(e);
+        setMessage(`Error: ${e.message}`);
         return;
       }
     }
-    // Remove row from table
-    setRows(rows.filter((_, i) => i !== index));
+    setRows(rows.filter((_, i) => i !== idx));
   };
 
-  // Add a new blank row at top
-  const addNewRow = () => setRows([blankRow(), ...rows]);
+  const addNewRow = () => setRows([blankRow(), ...rows.slice(1)]);
+
+  // Sort rows except blank first row
+  const sortedRows = () => {
+    const [first, ...rest] = rows;
+    const sorted = rest.sort((a, b) =>
+      sortOrder === 'asc' ? a.id - b.id : b.id - a.id
+    );
+    return [first, ...sorted];
+  };
 
   return (
     <div style={{ maxWidth: '100%', margin: '2rem auto' }}>
-      <button onClick={addNewRow} style={{ marginBottom: '1rem', padding: '0.5rem 1rem' }}>
-        Create New Project
-      </button>
+      <div style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <button onClick={addNewRow} style={{ padding: '0.5rem 1rem' }}>
+          Create New Project
+        </button>
+        <label>
+          Sort:
+          <select
+            value={sortOrder}
+            onChange={e => setSortOrder(e.target.value)}
+            style={{ marginLeft: '0.5rem' }}
+          >
+            <option value="desc">Descending</option>
+            <option value="asc">Ascending</option>
+          </select>
+        </label>
+      </div>
       {rows.length > 0 && (
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead style={{ backgroundColor: '#1f2937', color: '#fff' }}>
@@ -132,7 +168,7 @@ export default function CreateProjectForm({ onCreate }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, idx) => (
+            {sortedRows().map((r, idx) => (
               <tr key={idx}>
                 <td style={cellStyle}>
                   <input
@@ -162,7 +198,8 @@ export default function CreateProjectForm({ onCreate }) {
                     style={inputStyle}
                   >
                     {['Flats','Letters','First Class Letters','Post Card','First Class Flats']
-                      .map(opt => <option key={opt}>{opt}</option>)}
+                      .map(opt => <option key={opt}>{opt}</option>)
+                    }
                   </select>
                 </td>
                 <td style={cellStyle}>
@@ -209,7 +246,7 @@ export default function CreateProjectForm({ onCreate }) {
                   <button onClick={() => saveRow(idx)} style={actionButtonStyle}>
                     Save
                   </button>
-                  <button onClick={() => deleteRow(idx)} style={{ ...actionButtonStyle, marginLeft: '0.5rem' }}>
+                  <button onClick={() => deleteRow(idx)} style={actionButtonStyle}>
                     Delete
                   </button>
                 </td>
@@ -218,7 +255,7 @@ export default function CreateProjectForm({ onCreate }) {
           </tbody>
         </table>
       )}
-      {message && <div style={{ marginTop: '1rem' }}>{message}</div>}
+      {message && <div style={{ marginTop: '1rem', color: 'red' }}>{message}</div>}
     </div>
   );
 }
@@ -227,4 +264,4 @@ export default function CreateProjectForm({ onCreate }) {
 const headerStyle = { padding: '0.5rem', textAlign: 'center' };
 const cellStyle = { border: '1px solid #ddd', padding: '0.5rem', textAlign: 'center' };
 const inputStyle = { width: '100%', padding: '0.25rem', boxSizing: 'border-box' };
-const actionButtonStyle = { padding: '0.25rem 0.5rem', cursor: 'pointer' };
+const actionButtonStyle = { padding: '0.5rem 1rem', cursor: 'pointer', minWidth: '80px' };
