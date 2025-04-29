@@ -99,6 +99,21 @@ def create_project():
     db.session.commit()
     return jsonify(proj.to_dict()), 201
 
+
+@app.route('/mailings/<int:id>', methods=['DELETE'])
+def delete_project(id):
+    proj = Project.query.get_or_404(id)
+
+    # 1) delete all transactions for this project
+    TransactionDetail.query.filter_by(project_id=id).delete()
+
+    # 2) delete the project itself
+    db.session.delete(proj)
+    db.session.commit()
+    return '', 204
+
+
+
 @app.route('/transactions', methods=['GET'])
 def list_transactions():
     txs = TransactionDetail.query.all()
