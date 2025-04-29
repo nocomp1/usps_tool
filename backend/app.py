@@ -3,23 +3,22 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 
-# ─── Flask setup, pointing static_folder at our React build ───────────────
 app = Flask(__name__, static_folder='static', static_url_path='')
 CORS(app)
 
-# ─── Database config (MySQL on RDS) ────────────────────────────────────────
-# Make sure you've installed PyMySQL in your backend/requirements.txt
-DB_USER     = os.environ['DB_USER']
-DB_PASSWORD = os.environ['DB_PASSWORD']
-DB_HOST     = os.environ.get('DB_HOST', 'uspsdb.chyuqasw4rhr.us-east-2.rds.amazonaws.com')
-DB_NAME     = os.environ['DB_NAME']
+# ─── Read RDS credentials from environment ────────────────────────
+DB_USER     = os.environ.get('DB_USER')
+DB_PASSWORD = os.environ.get('DB_PASSWORD')
+DB_HOST     = os.environ.get('DB_HOST')
+DB_NAME     = os.environ.get('DB_NAME')
 
+# ─── Build the MySQL connection string ───────────────────────────
 app.config['SQLALCHEMY_DATABASE_URI'] = (
     f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
 )
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
 
+db = SQLAlchemy(app)
 
 # ─── Models ────────────────────────────────────────────────────────────────
 class Project(db.Model):
