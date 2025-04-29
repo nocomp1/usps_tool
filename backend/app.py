@@ -6,21 +6,20 @@ from flask_sqlalchemy import SQLAlchemy
 app = Flask(__name__, static_folder='static', static_url_path='')
 CORS(app)
 
-# ─── Read RDS credentials from environment ────────────────────────
-DB_USER     = os.environ.get('DB_USER')
-DB_PASSWORD = os.environ.get('DB_PASSWORD')
-DB_HOST     = os.environ.get('DB_HOST')
-DB_NAME     = os.environ.get('DB_NAME')
+# ─── Read RDS credentials from environment ───────────────────────────
+DB_USER     = os.getenv('DB_USER')
+DB_PASSWORD = os.getenv('DB_PASSWORD')
+DB_HOST     = os.getenv('DB_HOST')
+DB_NAME     = os.getenv('DB_NAME')
 
-# ─── Build the MySQL connection string ───────────────────────────
+# ─── Build the MySQL connection string ──────────────────────────────
 app.config['SQLALCHEMY_DATABASE_URI'] = (
     f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
 )
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
 db = SQLAlchemy(app)
 
-# ─── Models ────────────────────────────────────────────────────────────────
+# ─── Models ─────────────────────────────────────────────────────────
 class Project(db.Model):
     __tablename__ = 'projects'
     id                   = db.Column(db.Integer, primary_key=True)
@@ -77,8 +76,12 @@ class TransactionDetail(db.Model):
             "net_postage": self.net_postage,
         }
 
+# ─── Ensure tables exist inside Gunicorn/EB ───────────────────────────
+@app.before_first_request
+def initialize_database():
+    db.create_all()
 
-# ─── API Routes ────────────────────────────────────────────────────────────
+# ─── API Routes ───────────────────────────────────────────────────────
 @app.route('/mailings', methods=['GET'])
 def list_projects():
     return jsonify([p.to_dict() for p in Project.query.all()])
@@ -165,8 +168,7 @@ def delete_transaction(id):
     db.session.commit()
     return '', 204
 
-
-# ─── React build serving ───────────────────────────────────────────────────
+# ─── React build serving ───────────────────────────────────────────────
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve_react_app(path):
@@ -175,9 +177,6 @@ def serve_react_app(path):
         return send_from_directory(app.static_folder, path)
     return send_from_directory(app.static_folder, 'index.html')
 
-
-# ─── Initialize DB & run ───────────────────────────────────────────────────
+# ─── Run locally ────────────────────────────────────────────────────────
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
     app.run(host='0.0.0.0', port=8000, debug=True)
