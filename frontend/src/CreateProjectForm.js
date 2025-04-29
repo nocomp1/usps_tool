@@ -45,17 +45,21 @@ export default function CreateProjectForm({ onCreate }) {
     setRows(newRows);
   };
 
+  // Require all fields to be non-empty
   const validateRow = row => {
-    const required = [
-      ['projectDescription', 'Project Description'],
-      ['productType', 'Product Type'],
-      ['pieceWeight', 'Piece Weight'],
-      ['quantity', 'Quantity'],
-      ['totalPostage', 'Total Postage'],
-      ['netPostage', 'Net Postage']
+    const requiredKeys = [
+      ['projectDescription','Project Description'],
+      ['projectId','Project #'],
+      ['jobId','Job #'],
+      ['productType','Product Type'],
+      ['pieceWeight','Piece Weight'],
+      ['quantity','Quantity'],
+      ['totalPostage','Total Postage'],
+      ['netPostage','Net Postage'],
+      ['discount','Discount']
     ];
-    for (let [key, label] of required) {
-      if (!row[key] && row[key] !== 0) {
+    for (let [key,label] of requiredKeys) {
+      if (row[key] === '' || row[key] === null || row[key] === undefined) {
         return `${label} is required`;
       }
     }
@@ -64,9 +68,9 @@ export default function CreateProjectForm({ onCreate }) {
 
   const saveRow = async idx => {
     const row = rows[idx];
-    const err = validateRow(row);
-    if (err) {
-      setMessage(err);
+    const error = validateRow(row);
+    if (error) {
+      setMessage(error);
       return;
     }
     const payload = {
@@ -76,7 +80,7 @@ export default function CreateProjectForm({ onCreate }) {
       quantity:            parseInt(row.quantity, 10),
       total_postage:       parseFloat(row.totalPostage),
       net_postage:         parseFloat(row.netPostage),
-      discount:            parseFloat(row.discount) || 0,
+      discount:            parseFloat(row.discount),
       job_id:              row.jobId,
       project_id:          row.projectId
     };
@@ -92,21 +96,6 @@ export default function CreateProjectForm({ onCreate }) {
       const result = await resp.json();
       setMessage(`Project ID ${result.id} saved`);
       onCreate();
-      // refresh rows
-      const data = await fetch('/mailings').then(r => r.json());
-      const updated = data.map(p => ({
-        id: p.id,
-        projectDescription: p.project_description,
-        projectId: p.project_id || '',
-        jobId: p.job_id || '',
-        productType: p.product_type,
-        pieceWeight: p.piece_weight,
-        quantity: p.quantity,
-        totalPostage: p.total_postage,
-        netPostage: p.net_postage,
-        discount: p.discount || ''
-      }));
-      setRows([blankRow(), ...updated]);
     } catch (e) {
       console.error(e);
       setMessage(`Error: ${e.message}`);
@@ -121,23 +110,23 @@ export default function CreateProjectForm({ onCreate }) {
         const resp = await fetch(`/mailings/${row.id}`, { method: 'DELETE' });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         setMessage(`Deleted project ${row.id}`);
+        onCreate();
+        return;
       } catch (e) {
         console.error(e);
         setMessage(`Error: ${e.message}`);
         return;
       }
     }
+    // remove new blank row
     setRows(rows.filter((_, i) => i !== idx));
   };
 
   const addNewRow = () => setRows([blankRow(), ...rows.slice(1)]);
 
-  // Sort rows except blank first row
   const sortedRows = () => {
     const [first, ...rest] = rows;
-    const sorted = rest.sort((a, b) =>
-      sortOrder === 'asc' ? a.id - b.id : b.id - a.id
-    );
+    const sorted = rest.sort((a,b) => sortOrder === 'asc' ? a.id - b.id : b.id - a.id);
     return [first, ...sorted];
   };
 
@@ -149,11 +138,7 @@ export default function CreateProjectForm({ onCreate }) {
         </button>
         <label>
           Sort:
-          <select
-            value={sortOrder}
-            onChange={e => setSortOrder(e.target.value)}
-            style={{ marginLeft: '0.5rem' }}
-          >
+          <select value={sortOrder} onChange={e => setSortOrder(e.target.value)} style={{ marginLeft: '0.5rem' }}>
             <option value="desc">Descending</option>
             <option value="asc">Ascending</option>
           </select>
@@ -171,84 +156,27 @@ export default function CreateProjectForm({ onCreate }) {
             {sortedRows().map((r, idx) => (
               <tr key={idx}>
                 <td style={cellStyle}>
-                  <input
-                    value={r.projectDescription}
-                    onChange={e => updateRowField(idx, 'projectDescription', e.target.value)}
-                    style={inputStyle}
-                  />
+                  <input value={r.projectDescription} onChange={e => updateRowField(idx,'projectDescription',e.target.value)} style={inputStyle} />
                 </td>
                 <td style={cellStyle}>
-                  <input
-                    value={r.projectId}
-                    onChange={e => updateRowField(idx, 'projectId', e.target.value)}
-                    style={inputStyle}
-                  />
+                  <input value={r.projectId} onChange={e => updateRowField(idx,'projectId',e.target.value)} style={inputStyle} />
                 </td>
                 <td style={cellStyle}>
-                  <input
-                    value={r.jobId}
-                    onChange={e => updateRowField(idx, 'jobId', e.target.value)}
-                    style={inputStyle}
-                  />
+                  <input value={r.jobId} onChange={e => updateRowField(idx,'jobId',e.target.value)} style={inputStyle} />
                 </td>
                 <td style={cellStyle}>
-                  <select
-                    value={r.productType}
-                    onChange={e => updateRowField(idx, 'productType', e.target.value)}
-                    style={inputStyle}
-                  >
-                    {['Flats','Letters','First Class Letters','Post Card','First Class Flats']
-                      .map(opt => <option key={opt}>{opt}</option>)
-                    }
+                  <select value={r.productType} onChange={e => updateRowField(idx,'productType',e.target.value)} style={inputStyle}>
+                    {['Flats','Letters','First Class Letters','Post Card','First Class Flats'].map(opt=><option key={opt}>{opt}</option>)}
                   </select>
                 </td>
+                <td style={cellStyle}><input type="number" step="0.0001" value={r.pieceWeight} onChange={e=>updateRowField(idx,'pieceWeight',e.target.value)} style={inputStyle} /></td>
+                <td style={cellStyle}><input type="number" value={r.quantity} onChange={e=>updateRowField(idx,'quantity',e.target.value)} style={inputStyle} /></td>
+                <td style={cellStyle}><input type="number" step="0.01" value={r.totalPostage} onChange={e=>updateRowField(idx,'totalPostage',e.target.value)} style={inputStyle} /></td>
+                <td style={cellStyle}><input type="number" step="0.01" value={r.netPostage} onChange={e=>updateRowField(idx,'netPostage',e.target.value)} style={inputStyle} /></td>
+                <td style={cellStyle}><input type="number" step="0.01" value={r.discount} onChange={e=>updateRowField(idx,'discount',e.target.value)} style={inputStyle} /></td>
                 <td style={cellStyle}>
-                  <input
-                    type="number" step="0.0001"
-                    value={r.pieceWeight}
-                    onChange={e => updateRowField(idx, 'pieceWeight', e.target.value)}
-                    style={inputStyle}
-                  />
-                </td>
-                <td style={cellStyle}>
-                  <input
-                    type="number"
-                    value={r.quantity}
-                    onChange={e => updateRowField(idx, 'quantity', e.target.value)}
-                    style={inputStyle}
-                  />
-                </td>
-                <td style={cellStyle}>
-                  <input
-                    type="number" step="0.01"
-                    value={r.totalPostage}
-                    onChange={e => updateRowField(idx, 'totalPostage', e.target.value)}
-                    style={inputStyle}
-                  />
-                </td>
-                <td style={cellStyle}>
-                  <input
-                    type="number" step="0.01"
-                    value={r.netPostage}
-                    onChange={e => updateRowField(idx, 'netPostage', e.target.value)}
-                    style={inputStyle}
-                  />
-                </td>
-                <td style={cellStyle}>
-                  <input
-                    type="number" step="0.01"
-                    value={r.discount}
-                    onChange={e => updateRowField(idx, 'discount', e.target.value)}
-                    style={inputStyle}
-                  />
-                </td>
-                <td style={cellStyle}>
-                  <button onClick={() => saveRow(idx)} style={actionButtonStyle}>
-                    Save
-                  </button>
-                  <button onClick={() => deleteRow(idx)} style={actionButtonStyle}>
-                    Delete
-                  </button>
+                  <button onClick={()=>saveRow(idx)} style={actionButtonStyle}>Save</button>
+                  <button onClick={()=>deleteRow(idx)} style={actionButtonStyle}>Delete</button>
                 </td>
               </tr>
             ))}
@@ -264,4 +192,4 @@ export default function CreateProjectForm({ onCreate }) {
 const headerStyle = { padding: '0.5rem', textAlign: 'center' };
 const cellStyle = { border: '1px solid #ddd', padding: '0.5rem', textAlign: 'center' };
 const inputStyle = { width: '100%', padding: '0.25rem', boxSizing: 'border-box' };
-const actionButtonStyle = { padding: '0.5rem 1rem', cursor: 'pointer', minWidth: '80px' };
+const actionButtonStyle = { padding: '0.5rem 1rem', cursor: 'pointer', minWidth: '80px', margin: '0 0.25rem' };
