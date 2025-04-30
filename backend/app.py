@@ -29,6 +29,11 @@ else:
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
+# ─── Initialize schema on first request ──────────────────────────────────
+@app.before_first_request
+def init_db():
+    db.create_all()
+
 # ─── Models ────────────────────────────────────────────────────────────────
 class Project(db.Model):
     __tablename__ = 'projects'
@@ -182,8 +187,6 @@ def serve_react_app(path):
         return send_from_directory(app.static_folder, path)
     return send_from_directory(app.static_folder, 'index.html')
 
-# ─── Initialize DB & run ────────────────────────────────────────────────────
+# ─── Local dev only ────────────────────────────────────────────────────────
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
     app.run(host='0.0.0.0', port=8000, debug=True)
