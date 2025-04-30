@@ -1,33 +1,36 @@
-# ─── Stage 1: build React frontend ────────────────────────────────────────
-FROM node:16-alpine AS frontend
-WORKDIR /usr/src/app/frontend
+# ─── Stage 1: compile React ───────────────────────────────────────────────
+FROM node:16-alpine AS build-frontend
+WORKDIR /usr/src/app
 
-# 1. Copy just package manifests and install dependencies
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
+# 1) copy only package manifests & install deps
+COPY package.json package-lock.json ./
+RUN npm ci --silent
 
-# 2. Copy source and build
-COPY frontend/ ./
+# 2) copy the rest of your React code & build
+COPY . .
 RUN npm run build
 
-# ─── Stage 2: build Python backend ───────────────────────────────────────
-FROM python:3.10-slim AS backend
-WORKDIR /usr/src/app/backend
+# ─── Stage 2: bundle & run Flask ──────────────────────────────────────────
+FROM python:3.10-slim AS runtime
+WORKDIR /usr/src/app
 
-# Install build tools for any pip packages that need compiling
+# install build tools for any compiled Python deps
 RUN apt-get update \
  && apt-get install -y --no-install-recommends build-essential \
  && rm -rf /var/lib/apt/lists/*
 
-# 1. Install Python dependencies
-COPY backend/requirements.txt ./
+# 1) install Python deps
+COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 2. Copy backend source
-COPY backend/ ./
+# 2) copy your Flask app
+COPY app.py ./
 
-# 3. Copy React output into Flask's static folder
-COPY --from=frontend /usr/src/app/frontend/build /usr/src/app/backend/static
+# 3) drop in the React build into Flask's 'static' dir
+COPY --from=build-frontend /usr/src/app/build ./static
+
+# (optional) if you had any other Python modules or .py files:
+# COPY your_module.py another_module.py ./  
 
 EXPOSE 8000
 CMD ["gunicorn", "app:app", "--bind", "0.0.0.0:8000"]
