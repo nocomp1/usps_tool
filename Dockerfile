@@ -1,12 +1,16 @@
-# ─── Stage 1: build React ─────────────────────────────────────────────
+# ─── Stage 1: build React frontend ────────────────────────────────────────
 FROM node:16 AS frontend
 WORKDIR /usr/src/app/frontend
-COPY frontend/package*.json ./
-RUN npm install
-COPY frontend/ .
+
+# Copy manifest + lock, install cleanly
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+# Copy all source and build
+COPY frontend/ ./
 RUN npm run build
 
-# ─── Stage 2: build Python backend ───────────────────────────────────
+# ─── Stage 2: build Python backend ────────────────────────────────────────
 FROM python:3.10-slim AS backend
 WORKDIR /usr/src/app/backend
 
