@@ -57,7 +57,7 @@ export default function App() {
       {view === 'create' && (
         <>
           <button onClick={() => setView('menu')} style={backButton}>&larr; Back to Menu</button>
-          <CreateProjectForm onCreate={() => { loadProjects(); setView('menu'); }} />
+          <CreateProjectForm onCreate={() => { loadProjects() }} />
         </>
       )}
       {view === 'transactions' && (
