@@ -6,22 +6,26 @@ from flask_sqlalchemy import SQLAlchemy
 app = Flask(__name__, static_folder="static", static_url_path="")
 CORS(app)
 
-# ─── Read RDS credentials from environment (None if missing) ────────────────
-DB_USER     = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_HOST     = os.getenv("DB_HOST")
-DB_NAME     = os.getenv("DB_NAME")
+# ─── Read database credentials from environment ────────────────────────────
+DB_USER     = os.getenv("RDS_USERNAME") or os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("RDS_PASSWORD") or os.getenv("DB_PASSWORD")
+DB_HOST     = os.getenv("RDS_HOSTNAME") or os.getenv("DB_HOST")
+DB_PORT     = os.getenv("RDS_PORT", "3306")
+DB_NAME     = os.getenv("RDS_DB_NAME") or os.getenv("DB_NAME")
 
-# ─── Choose the right SQLAlchemy URL ────────────────────────────────────────
+# ─── Configure SQLAlchemy URL ──────────────────────────────────────────────
 if DB_USER and DB_PASSWORD and DB_HOST and DB_NAME:
     app.config["SQLALCHEMY_DATABASE_URI"] = (
-        f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
+        f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
     )
 else:
     basedir = os.path.abspath(os.path.dirname(__file__))
-    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///" + os.path.join(basedir, "mailings.db")
+    app.config["SQLALCHEMY_DATABASE_URI"] = (
+        "sqlite:///" + os.path.join(basedir, "mailings.db")
+    )
 
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
 db = SQLAlchemy(app)
 
 # ─── Models ─────────────────────────────────────────────────────────────────
@@ -52,6 +56,7 @@ class Project(db.Model):
             "project_id":           self.project_id,
         }
 
+
 class TransactionDetail(db.Model):
     __tablename__ = "transaction_details"
     id               = db.Column(db.Integer, primary_key=True)
@@ -81,7 +86,7 @@ class TransactionDetail(db.Model):
             "net_postage":       self.net_postage,
         }
 
-# ─── API Routes ─────────────────────────────────────────────────────────────
+# ─── Error handlers ─────────────────────────────────────────────────────────
 @app.errorhandler(404)
 def not_found(e):
     return jsonify({"error": "Not found"}), 404
@@ -90,6 +95,7 @@ def not_found(e):
 def server_error(e):
     return jsonify({"error": "Server error"}), 500
 
+# ─── API Routes ─────────────────────────────────────────────────────────────
 @app.route("/mailings", methods=["GET"])
 def list_projects():
     return jsonify([p.to_dict() for p in Project.query.all()])
@@ -98,12 +104,8 @@ def list_projects():
 def create_project():
     data = request.get_json() or {}
     required = [
-        "project_description",
-        "product_type",
-        "piece_weight",
-        "quantity",
-        "total_postage",
-        "net_postage",
+        "project_description", "product_type", "piece_weight",
+        "quantity", "total_postage", "net_postage",
     ]
     for field in required:
         if field not in data:
@@ -203,10 +205,6 @@ def serve_react_app(path):
         return send_from_directory(app.static_folder, path)
     return send_from_directory(app.static_folder, "index.html")
 
-# ─── Initialize DB & run ────────────────────────────────────────────────────
-if __name__ == "__main__":
-    with app.app_context():
-        db.create_all()
-    port = int(os.getenv("PORT", 8000))
-    debug = os.getenv("FLASK_DEBUG", "false").lower() == "true"
-    app.run(host="0.0.0.0", port=port, debug=debug)
+# ─── Initialize DB on startup ───────────────────────────────────────────────
+with app.app_context():
+    db.create_all()
