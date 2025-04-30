@@ -3,35 +3,33 @@ from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 
-# ─── Flask setup, pointing static_folder at our React build ───────────────
 app = Flask(__name__, static_folder='static', static_url_path='')
 CORS(app)
 
-# ─── Health check for Elastic Beanstalk ────────────────────────────────────
-@app.route('/health')
-def health():
-    return 'OK', 200
+# ─── Read RDS credentials from environment (may be None) ────────────────
+DB_USER     = os.getenv('DB_USER')
+DB_PASSWORD = os.getenv('DB_PASSWORD')
+DB_HOST     = os.getenv('DB_HOST')
+DB_NAME     = os.getenv('DB_NAME')
 
-# ─── Read RDS credentials from environment ────────────────────────────────
-DB_USER     = os.environ.get('DB_USER')
-DB_PASSWORD = os.environ.get('DB_PASSWORD')
-DB_HOST     = os.environ.get('DB_HOST')
-DB_NAME     = os.environ.get('DB_NAME')
+# ─── Choose the right SQLAlchemy URL ─────────────────────────────────────
+if DB_USER and DB_PASSWORD and DB_HOST and DB_NAME:
+    # production: RDS MySQL
+    app.config['SQLALCHEMY_DATABASE_URI'] = (
+        f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}"
+        f"@{DB_HOST}/{DB_NAME}"
+    )
+else:
+    # local dev: fallback to SQLite
+    basedir = os.path.abspath(os.path.dirname(__file__))
+    app.config['SQLALCHEMY_DATABASE_URI'] = (
+        'sqlite:///' + os.path.join(basedir, 'mailings.db')
+    )
 
-# ─── Build the MySQL connection string ───────────────────────────────────
-app.config['SQLALCHEMY_DATABASE_URI'] = (
-    f"mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}"
-)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
 db = SQLAlchemy(app)
 
-# ─── Ensure tables exist before handling any requests ─────────────────────
-@app.before_first_request
-def init_db():
-    db.create_all()
-
-# ─── Models ───────────────────────────────────────────────────────────────
+# ─── Models ────────────────────────────────────────────────────────────────
 class Project(db.Model):
     __tablename__ = 'projects'
     id                   = db.Column(db.Integer, primary_key=True)
@@ -75,17 +73,17 @@ class TransactionDetail(db.Model):
 
     def to_dict(self):
         return {
-            "id":               self.id,
-            "project_id":       self.project_id,
-            "category":         self.category,
-            "product":          self.product,
-            "entry":            self.entry,
-            "price_category":   self.price_category,
-            "line_price":       self.line_price,
+            "id": self.id,
+            "project_id": self.project_id,
+            "category": self.category,
+            "product": self.product,
+            "entry": self.entry,
+            "price_category": self.price_category,
+            "line_price": self.line_price,
             "number_of_pieces": self.number_of_pieces,
-            "total_postage":    self.total_postage,
-            "discount":         self.discount,
-            "net_postage":      self.net_postage,
+            "total_postage": self.total_postage,
+            "discount": self.discount,
+            "net_postage": self.net_postage,
         }
 
 # ─── API Routes ────────────────────────────────────────────────────────────
@@ -175,7 +173,7 @@ def delete_transaction(id):
     db.session.commit()
     return '', 204
 
-# ─── React build serving ───────────────────────────────────────────────────
+# ─── Serve React build ──────────────────────────────────────────────────────
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve_react_app(path):
@@ -184,6 +182,8 @@ def serve_react_app(path):
         return send_from_directory(app.static_folder, path)
     return send_from_directory(app.static_folder, 'index.html')
 
-# ─── Run (only used in local/dev) ───────────────────────────────────────────
+# ─── Initialize DB & run ────────────────────────────────────────────────────
 if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
     app.run(host='0.0.0.0', port=8000, debug=True)
