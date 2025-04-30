@@ -18,8 +18,7 @@ export default function CreateProjectForm({ onCreate }) {
     discount: ''
   });
 
-   // 1) fetch helper: maps API data → table rows
-   const fetchRows = () => {
+  useEffect(() => {
     fetch('/mailings')
       .then(res => res.json())
       .then(data => {
@@ -35,13 +34,10 @@ export default function CreateProjectForm({ onCreate }) {
           netPostage: p.net_postage,
           discount: p.discount || ''
         }));
-        setRows([ blankRow(), ...existing ]);
+        setRows([blankRow(), ...existing]);
       })
       .catch(err => console.error('Fetch failed:', err));
-  };
-
-  // 2) run once on mount
-  useEffect(fetchRows, []);
+  }, [onCreate]);
 
   const updateRowField = (i, field, value) => {
     const newRows = [...rows];
@@ -70,7 +66,7 @@ export default function CreateProjectForm({ onCreate }) {
     return null;
   };
 
-
+  
   const saveRow = async idx => {
     const row = rows[idx];
     const error = validateRow(row);
@@ -100,7 +96,6 @@ export default function CreateProjectForm({ onCreate }) {
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const result = await resp.json();
       setMessage(`Project ID ${result.id} saved`);
-      fetchRows();
       onCreate();
     } catch (e) {
       console.error(e);
