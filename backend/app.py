@@ -100,6 +100,36 @@ def server_error(e):
 def list_projects():
     return jsonify([p.to_dict() for p in Project.query.all()])
 
+
+@app.route("/mailings/<int:id>", methods=["PUT"])
+def update_project(id):
+    proj = Project.query.get_or_404(id)
+    data = request.get_json() or {}
+
+    # numeric fields need casting
+    casts = {
+        "piece_weight": float,
+        "quantity":     int,
+        "total_postage":float,
+        "net_postage":  float,
+        "discount":     float
+    }
+    # apply casts for numeric fields
+    for key, caster in casts.items():
+        if key in data:
+            setattr(proj, key, caster(data[key]))
+
+    # apply simple string fields
+    for key in ("project_description", "product_type", "job_id", "project_id"):
+        if key in data:
+            setattr(proj, key, data[key])
+
+    db.session.commit()
+    return jsonify(proj.to_dict())
+
+
+
+
 @app.route("/mailings", methods=["POST"])
 def create_project():
     data = request.get_json() or {}

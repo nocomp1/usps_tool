@@ -74,6 +74,7 @@ export default function CreateProjectForm({ onCreate }) {
       setMessage(error);
       return;
     }
+  
     const payload = {
       project_description: row.projectDescription,
       product_type:        row.productType,
@@ -85,23 +86,37 @@ export default function CreateProjectForm({ onCreate }) {
       job_id:              row.jobId,
       project_id:          row.projectId
     };
+  
     try {
-      const url = row.id ? `/mailings/${row.id}` : '/mailings';
+      const url    = row.id ? `/mailings/${row.id}` : '/mailings';
       const method = row.id ? 'PUT' : 'POST';
-      const resp = await fetch(url, {
+      const resp   = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  
       const result = await resp.json();
       setMessage(`Project ID ${result.id} saved`);
-      onCreate();
+  
+      // update the saved row
+      const newRows = [...rows];
+      newRows[idx] = { ...row, id: result.id };
+  
+      if (!row.id) {
+        // it was a brand-new row → prepend a fresh blank one
+        setRows([ blankRow(), ...newRows ]);
+      } else {
+        // existing row update → stay on this form
+        setRows(newRows);
+      }
     } catch (e) {
       console.error(e);
       setMessage(`Error: ${e.message}`);
     }
   };
+  
 
   const deleteRow = async idx => {
     const row = rows[idx];
@@ -170,10 +185,13 @@ export default function CreateProjectForm({ onCreate }) {
             </tr>
           </thead>
           <tbody>
-            {sortedRows().map((r, idx) => {
-              const rawIdx = findIndex(r);
+          {sortedRows().map((r, idx) => {
+              const rawIdx   = findIndex(r);
+              const highlight = idx === 0
+                ? { backgroundColor: '#e0f7fa' }
+                : {};
               return (
-              <tr key={idx}>
+                <tr key={idx} style={highlight}> 
                 <td style={cellStyle}>
                   <input value={r.projectDescription} onChange={e => updateRowField(rawIdx,'projectDescription',e.target.value)} style={inputStyle} />
                 </td>
