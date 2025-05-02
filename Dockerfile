@@ -1,5 +1,5 @@
 # ─── Stage 1: build React frontend ────────────────────────────────────────
-FROM node:16-alpine AS frontend
+FROM node:18-alpine AS frontend
 WORKDIR /usr/src/app/frontend
 
 # 1) Copy package manifests & install deps
