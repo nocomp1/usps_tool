@@ -10,8 +10,12 @@ export default function CreateProjectForm({ onCreate }) {
   const [parsedProject, setParsedProject] = useState(null);
   const [parsedDetails, setParsedDetails] = useState([]);
 
-  // helper to strip thousand-separators
-  const stripCommas = v => v?.toString().replace(/,/g, '');
+
+   // helper to strip non-numeric chars (commas, dollar signs, etc.)
+ const sanitizeNumber = v =>
+   v != null
+     ? v.toString().replace(/[^0-9.-]/g, '')
+     : '';
 
   const blankRow = () => ({
     id: null,
@@ -76,10 +80,10 @@ export default function CreateProjectForm({ onCreate }) {
         project_id:           pi,
         job_id:               ji,
         product_type:         pt,
-        piece_weight:         parseFloat(stripCommas(pw)) || 0,
-        quantity:             parseInt(stripCommas(qty), 10) || 0,
-        total_postage:        parseFloat(stripCommas(tp)) || 0,
-        net_postage:          parseFloat(stripCommas(np)) || 0,
+        piece_weight:         parseFloat(sanitizeNumber(pw)) || 0,
+        quantity:             parseInt(sanitizeNumber(qty), 10) || 0,
+        total_postage:        parseFloat(sanitizeNumber(tp)) || 0,
+        net_postage:          parseFloat(sanitizeNumber(np)) || 0,
         discount:             0
       };
 
@@ -104,11 +108,11 @@ export default function CreateProjectForm({ onCreate }) {
             product:          product || null,
             entry:            entry || null,
             price_category:   priceCategory?.toString().trim() ? priceCategory : 'None',
-            line_price:       parseFloat(stripCommas(linePrice)) || 0,
-            number_of_pieces: parseInt(stripCommas(pieces), 10) || 0,
-            total_postage:    parseFloat(stripCommas(subtotal)) || 0,
-            discount:         parseFloat(stripCommas(discountTotal)) || 0,
-            net_postage:      parseFloat(stripCommas(net)) || 0
+            line_price:       parseFloat(sanitizeNumber(linePrice)) || 0,
+            number_of_pieces: parseInt(sanitizeNumber(pieces), 10) || 0,
+            total_postage:    parseFloat(sanitizeNumber(subtotal)) || 0,
+            discount:         parseFloat(sanitizeNumber(discountTotal)) || 0,
+            net_postage:      parseFloat(sanitizeNumber(net)) || 0
           };
         });
 
@@ -194,11 +198,11 @@ export default function CreateProjectForm({ onCreate }) {
       project_id:          row.projectId,
       job_id:              row.jobId,
       product_type:        row.productType,
-      piece_weight:        parseFloat(stripCommas(row.pieceWeight)) || 0,
-      quantity:            parseInt(stripCommas(row.quantity), 10) || 0,
-      total_postage:       parseFloat(stripCommas(row.totalPostage)) || 0,
-      net_postage:         parseFloat(stripCommas(row.netPostage)) || 0,
-      discount:            parseFloat(stripCommas(row.discount)) || 0
+      piece_weight:        parseFloat(sanitizeNumber(row.pieceWeight)) || 0,
+      quantity:            parseInt(sanitizeNumber(row.quantity), 10) || 0,
+      total_postage:       parseFloat(sanitizeNumber(row.totalPostage)) || 0,
+      net_postage:         parseFloat(sanitizeNumber(row.netPostage)) || 0,
+      discount:            parseFloat(sanitizeNumber(row.discount)) || 0
     };
     try {
       const resp = await fetch(row.id ? `/mailings/${row.id}` : '/mailings', {
