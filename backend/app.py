@@ -2,6 +2,7 @@ import os
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import inspect, text
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 CORS(app)
@@ -41,6 +42,8 @@ class Project(db.Model):
     discount            = db.Column(db.Float, nullable=True)
     job_id              = db.Column(db.String(100), nullable=True)
     project_id          = db.Column(db.String(100), nullable=True)
+    format              = db.Column(db.String(50), nullable=True)
+    page_count          = db.Column(db.Integer, nullable=True)
 
     def to_dict(self):
         return {
@@ -54,6 +57,8 @@ class Project(db.Model):
             "discount":             self.discount,
             "job_id":               self.job_id,
             "project_id":           self.project_id,
+            "format":               self.format,
+            "page_count":           self.page_count,
         }
 
 
@@ -106,29 +111,23 @@ def update_project(id):
     proj = Project.query.get_or_404(id)
     data = request.get_json() or {}
 
-    # numeric fields need casting
     casts = {
-        "piece_weight": float,
-        "quantity":     int,
-        "total_postage":float,
-        "net_postage":  float,
-        "discount":     float
+        "piece_weight":   float,
+        "quantity":       int,
+        "total_postage":  float,
+        "net_postage":    float,
+        "discount":       float,
+        "page_count":     int,
     }
-    # apply casts for numeric fields
     for key, caster in casts.items():
         if key in data:
             setattr(proj, key, caster(data[key]))
-
-    # apply simple string fields
-    for key in ("project_description", "product_type", "job_id", "project_id"):
+    for key in ("project_description", "product_type", "job_id", "project_id", "format"):  
         if key in data:
             setattr(proj, key, data[key])
 
     db.session.commit()
     return jsonify(proj.to_dict())
-
-
-
 
 @app.route("/mailings", methods=["POST"])
 def create_project():
@@ -151,6 +150,8 @@ def create_project():
         discount            = float(data.get("discount") or 0.0),
         job_id              = data.get("job_id"),
         project_id          = data.get("project_id"),
+        format              = data.get("format"),
+        page_count          = data.get("page_count"),
     )
     db.session.add(proj)
     db.session.commit()
@@ -205,11 +206,11 @@ def update_transaction(id):
     tx = TransactionDetail.query.get_or_404(id)
     data = request.get_json() or {}
     casts = {
-        "line_price": float,
+        "line_price":       float,
         "number_of_pieces": int,
-        "total_postage": float,
-        "discount": float,
-        "net_postage": float,
+        "total_postage":    float,
+        "discount":         float,
+        "net_postage":      float,
     }
     for key, val in data.items():
         if key in casts:
@@ -235,6 +236,28 @@ def serve_react_app(path):
         return send_from_directory(app.static_folder, path)
     return send_from_directory(app.static_folder, "index.html")
 
-# ─── Initialize DB on startup ───────────────────────────────────────────────
+# ─── Initialize DB on startup and auto-migrate new columns ─────────────────
 with app.app_context():
+    # Create tables if they don’t exist
     db.create_all()
+
+    # Reflect existing table schema
+    inspector = inspect(db.engine)
+    existing_cols = {col['name'] for col in inspector.get_columns('projects')}
+
+    # Add format column if missing
+    if 'format' not in existing_cols:
+        # use session.execute for SQLAlchemy 2.x compatibility
+        db.session.execute(
+            text("ALTER TABLE projects ADD COLUMN format VARCHAR(50)")
+        )
+
+    # Add page_count column if missing
+    if 'page_count' not in existing_cols:
+        db.session.execute(
+            text("ALTER TABLE projects ADD COLUMN page_count INTEGER")
+        )
+
+    # Persist the schema changes
+    db.session.commit()
+

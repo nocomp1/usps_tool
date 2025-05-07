@@ -10,7 +10,9 @@ export default function CreateProjectForm({ onCreate }) {
   const [parsedProject, setParsedProject] = useState(null);
   const [parsedDetails, setParsedDetails] = useState([]);
 
-
+  const [importFormat,    setImportFormat]    = useState('Super Slim');
+  const [importPageCount, setImportPageCount] = useState('32');
+  
    // helper to strip non-numeric chars (commas, dollar signs, etc.)
  const sanitizeNumber = v =>
    v != null
@@ -27,7 +29,9 @@ export default function CreateProjectForm({ onCreate }) {
     quantity: '',
     totalPostage: '',
     netPostage: '',
-    discount: ''
+    discount: '',
+    format: 'Super Slim',   // default
+    pageCount: '32'
   });
 
   // Load existing projects
@@ -45,7 +49,9 @@ export default function CreateProjectForm({ onCreate }) {
           quantity: p.quantity,
           totalPostage: p.total_postage,
           netPostage: p.net_postage,
-          discount: p.discount || ''
+          discount: p.discount || '',
+          format:     p.format || 'Super Slim',
+          pageCount:  p.page_count?.toString() || '32',
         }));
         setRows([blankRow(), ...existing]);
       })
@@ -84,7 +90,9 @@ export default function CreateProjectForm({ onCreate }) {
         quantity:             parseInt(sanitizeNumber(qty), 10) || 0,
         total_postage:        parseFloat(sanitizeNumber(tp)) || 0,
         net_postage:          parseFloat(sanitizeNumber(np)) || 0,
-        discount:             0
+        discount:             0,
+        format:               importFormat,
+        page_count:           parseInt(importPageCount,10),
       };
 
       // Transactions start at row index 4
@@ -170,29 +178,36 @@ export default function CreateProjectForm({ onCreate }) {
     setMessage('Import canceled');
   };
 
-  // --- CRUD FOR SINGLE ROWS ---
-  const validateRow = row => {
+ // --- CRUD FOR SINGLE ROWS ---
+const validateRow = row => {
     const req = [
-      ['projectDescription','Project Description'],
-      ['projectId','Project #'],
-      ['jobId','Job #'],
-      ['productType','Product Type'],
-      ['pieceWeight','Piece Weight'],
-      ['quantity','Quantity'],
-      ['totalPostage','Total Postage'],
-      ['netPostage','Net Postage'],
-      ['discount','Discount']
+      ['projectDescription', 'Project Description'],
+      ['projectId',           'Project #'],
+      ['jobId',               'Job #'],
+      ['productType',         'Product Type'],
+      ['pieceWeight',         'Piece Weight'],
+      ['quantity',            'Quantity'],
+      ['totalPostage',        'Total Postage'],
+      ['netPostage',          'Net Postage'],
+      ['discount',            'Discount'],
+      ['format',              'Format'],      // new
+      ['pageCount',           'Page Count'],  // new
     ];
-    for (const [key,label] of req) {
-      if (row[key] === '' || row[key] == null) return `${label} is required`;
+  
+    for (const [key, label] of req) {
+      if (row[key] === '' || row[key] == null) {
+        return `${label} is required`;
+      }
     }
     return null;
   };
+  
 
   const saveRow = async idx => {
     const row = rows[idx];
     const err = validateRow(row);
     if (err) { setMessage(err); return; }
+  
     const payload = {
       project_description: row.projectDescription,
       project_id:          row.projectId,
@@ -202,25 +217,32 @@ export default function CreateProjectForm({ onCreate }) {
       quantity:            parseInt(sanitizeNumber(row.quantity), 10) || 0,
       total_postage:       parseFloat(sanitizeNumber(row.totalPostage)) || 0,
       net_postage:         parseFloat(sanitizeNumber(row.netPostage)) || 0,
-      discount:            parseFloat(sanitizeNumber(row.discount)) || 0
+      discount:            parseFloat(sanitizeNumber(row.discount)) || 0,
+      format:              row.format,                          // new
+      page_count:          parseInt(row.pageCount, 10) || 0     // new
     };
+  
     try {
-      const resp = await fetch(row.id ? `/mailings/${row.id}` : '/mailings', {
-        method: row.id ? 'PUT' : 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(payload)
-      });
+      const resp = await fetch(
+        row.id ? `/mailings/${row.id}` : '/mailings',
+        {
+          method:  row.id ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(payload)
+        }
+      );
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json();
       setMessage(`Saved project ${data.id}`);
       const updated = [...rows];
       updated[idx] = { ...row, id: data.id };
       setRows(row.id ? updated : [blankRow(), ...updated]);
-    } catch(e) {
+    } catch (e) {
       console.error(e);
       setMessage(`Save error: ${e.message}`);
     }
   };
+  
 
   const deleteRow = async idx => {
     const row = rows[idx];
@@ -250,50 +272,130 @@ export default function CreateProjectForm({ onCreate }) {
     <div style={{maxWidth:'100%',margin:'2rem auto'}}>
       {message && <div style={{color:'red',marginBottom:'1rem'}}>{message}</div>}
 
-      {/* Import */}
-      <div style={{marginBottom:'1rem'}}>
-        <label>
-          Import file: <input type="file" accept=".xlsx,.xls" onChange={handleFileUpload} />
-        </label>
-      </div>
+{/* Import controls */}
+<div style={{marginBottom:'1rem', display:'flex', gap:'1rem', alignItems:'center'}}>
+  <label>
+    Format:
+    <select
+      value={importFormat}
+      onChange={e => setImportFormat(e.target.value)}
+    >
+      {['Super Slim','Mini Flat','Letter Packet'].map(opt=>(
+        <option key={opt} value={opt}>{opt}</option>
+      ))}
+    </select>
+  </label>
+  <label>
+    Page Count:
+    <select
+      value={importPageCount}
+      onChange={e => setImportPageCount(e.target.value)}
+    >
+      {['32','52','100'].map(opt=>(
+        <option key={opt} value={opt}>{opt}</option>
+      ))}
+    </select>
+  </label>
+  <label>
+    Import file:
+    <input type="file" accept=".xlsx,.xls" onChange={handleFileUpload} />
+  </label>
+</div>
+
+
 
       {/* Preview */}
-      {parsedProject && (
-        <div style={{border:'1px solid #ccc',padding:'1rem',marginBottom:'2rem'}}>
-          <h3>Review Import</h3>
-          <table><tbody>
-            <tr><th align="left">Project Name</th><td>{parsedProject.project_description}</td></tr>
-            <tr><th align="left">Project #</th><td>{parsedProject.project_id}</td></tr>
-            <tr><th align="left">Job #</th><td>{parsedProject.job_id}</td></tr>
-            <tr><th align="left">Product Type</th><td>{parsedProject.product_type}</td></tr>
-            <tr><th align="left">Piece Weight</th><td>{parsedProject.piece_weight}</td></tr>
-            <tr><th align="left">Quantity</th><td>{parsedProject.quantity}</td></tr>
-            <tr><th align="left">Total Postage</th><td>{parsedProject.total_postage}</td></tr>
-            <tr><th align="left">Net Postage</th><td>{parsedProject.net_postage}</td></tr>
-            <tr><th align="left">Discount</th><td>{parsedProject.discount}</td></tr>
-            <tr><th align="left">Transactions</th><td>{parsedDetails.length}</td></tr>
-          </tbody></table>
-          <table style={{width:'100%',borderCollapse:'collapse',marginTop:'1rem'}}>
-            <thead style={{backgroundColor:'#f0f0f0'}}><tr>
-              <th>Category</th><th>Product</th><th>Entry</th><th>Price Cat</th>
-              <th>Line Price</th><th># Pieces</th><th>Total Postage</th>
-              <th>Discount</th><th>Net</th>
-            </tr></thead>
-            <tbody>
-              {parsedDetails.map((d,i)=>(<tr key={i}>
-                <td>{d.category}</td><td>{d.product}</td><td>{d.entry}</td>
-                <td>{d.price_category}</td><td>{d.line_price}</td>
-                <td>{d.number_of_pieces}</td><td>{d.total_postage}</td>
-                <td>{d.discount}</td><td>{d.net_postage}</td>
-              </tr>))}
-            </tbody>
-          </table>
-          <div style={{marginTop:'1rem'}}>
-            <button onClick={handleConfirmImport} style={{marginRight:'1rem'}}>Confirm Import</button>
-            <button onClick={handleCancelImport}>Cancel</button>
-          </div>
-        </div>
-      )}
+{parsedProject && (
+  <div style={{ border: '1px solid #ccc', padding: '1rem', marginBottom: '2rem' }}>
+    <h3>Review Import</h3>
+    <table>
+      <tbody>
+        <tr>
+          <th align="left">Project Name</th>
+          <td>{parsedProject.project_description}</td>
+        </tr>
+        <tr>
+          <th align="left">Project #</th>
+          <td>{parsedProject.project_id}</td>
+        </tr>
+        <tr>
+          <th align="left">Job #</th>
+          <td>{parsedProject.job_id}</td>
+        </tr>
+        <tr>
+          <th align="left">Product Type</th>
+          <td>{parsedProject.product_type}</td>
+        </tr>
+        <tr>
+          <th align="left">Piece Weight</th>
+          <td>{parsedProject.piece_weight}</td>
+        </tr>
+        <tr>
+          <th align="left">Quantity</th>
+          <td>{parsedProject.quantity}</td>
+        </tr>
+        <tr>
+          <th align="left">Total Postage</th>
+          <td>{parsedProject.total_postage}</td>
+        </tr>
+        <tr>
+          <th align="left">Net Postage</th>
+          <td>{parsedProject.net_postage}</td>
+        </tr>
+        <tr>
+          <th align="left">Discount</th>
+          <td>{parsedProject.discount}</td>
+        </tr>
+        {/* NEW ROWS */}
+        <tr>
+          <th align="left">Format</th>
+          <td>{parsedProject.format}</td>
+        </tr>
+        <tr>
+          <th align="left">Page Count</th>
+          <td>{parsedProject.page_count}</td>
+        </tr>
+        <tr>
+          <th align="left">Transactions</th>
+          <td>{parsedDetails.length}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '1rem' }}>
+      <thead style={{ backgroundColor: '#f0f0f0' }}>
+        <tr>
+          <th>Category</th><th>Product</th><th>Entry</th><th>Price Cat</th>
+          <th>Line Price</th><th># Pieces</th><th>Total Postage</th>
+          <th>Discount</th><th>Net</th>
+        </tr>
+      </thead>
+      <tbody>
+        {parsedDetails.map((d, i) => (
+          <tr key={i}>
+            <td>{d.category}</td>
+            <td>{d.product}</td>
+            <td>{d.entry}</td>
+            <td>{d.price_category}</td>
+            <td>{d.line_price}</td>
+            <td>{d.number_of_pieces}</td>
+            <td>{d.total_postage}</td>
+            <td>{d.discount}</td>
+            <td>{d.net_postage}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+
+    <div style={{ marginTop: '1rem' }}>
+      <button onClick={handleConfirmImport} style={{ marginRight: '1rem' }}>
+        Confirm Import
+      </button>
+      <button onClick={handleCancelImport}>Cancel</button>
+    </div>
+  </div>
+)}
+
 
       {/* Controls */}
       <div style={{display:'flex',alignItems:'center',gap:'1rem',marginBottom:'1rem'}}>
@@ -308,106 +410,195 @@ export default function CreateProjectForm({ onCreate }) {
       </div>
 
       {/* Table */}
-      {rows.length>0 && (
-        <table style={{width:'100%',borderCollapse:'collapse'}}>
-          <thead style={{backgroundColor:'#1f2937',color:'#fff'}}>
-            <tr>
-              {['PROJECT NAME','PROJECT #','JOB #','PRODUCT TYPE','PIECE WEIGHT','QUANTITY','TOTAL POSTAGE','NET POSTAGE','DISCOUNT','ACTIONS']
-                .map(h=>(
-                  <th key={h} style={{padding:'0.5rem',minWidth:['PROJECT NAME','PRODUCT TYPE'].includes(h)?'150px':'80px'}}>
-                    {h}
-                  </th>
-                ))
-              }
-            </tr>
-          </thead>
-          <tbody>
-            {sortedRows().map((r,idx)=>{
-              const rawIdx = findIndex(r);
-              const highlight = idx===0 ? {backgroundColor:'#e0f7fa'} : {};
-              return (
-                <tr key={idx} style={highlight}>
-                  <td style={cellStyle}>
-                    <input
-                      value={r.projectDescription}
-                      onChange={e=>updateRowField(rawIdx,'projectDescription',e.target.value)}
-                      style={inputStyle}
-                    />
-                  </td>
-                  <td style={cellStyle}>
-                    <input
-                      value={r.projectId}
-                      onChange={e=>updateRowField(rawIdx,'projectId',e.target.value)}
-                      style={inputStyle}
-                    />
-                  </td>
-                  <td style={cellStyle}>
-                    <input
-                      value={r.jobId}
-                      onChange={e=>updateRowField(rawIdx,'jobId',e.target.value)}
-                      style={inputStyle}
-                    />
-                  </td>
-                  <td style={cellStyle}>
-                    <select
-                      value={r.productType}
-                      onChange={e=>updateRowField(rawIdx,'productType',e.target.value)}
-                      style={inputStyle}
-                    >
-                      {['Flats','Letters','First Class Letters','Post Card','First Class Flats']
-                        .map(opt=><option key={opt}>{opt}</option>)}
-                    </select>
-                  </td>
-                  <td style={cellStyle}>
-                    <input
-                      type="number" step="0.0001"
-                      value={r.pieceWeight}
-                      onChange={e=>updateRowField(rawIdx,'pieceWeight',e.target.value)}
-                      style={inputStyle}
-                    />
-                  </td>
-                  <td style={cellStyle}>
-                    <input
-                      type="number"
-                      value={r.quantity}
-                      onChange={e=>updateRowField(rawIdx,'quantity',e.target.value)}
-                      style={inputStyle}
-                    />
-                  </td>
-                  <td style={cellStyle}>
-                    <input
-                      type="number" step="0.01"
-                      value={r.totalPostage}
-                      onChange={e=>updateRowField(rawIdx,'totalPostage',e.target.value)}
-                      style={inputStyle}
-                    />
-                  </td>
-                  <td style={cellStyle}>
-                    <input
-                      type="number" step="0.01"
-                      value={r.netPostage}
-                      onChange={e=>updateRowField(rawIdx,'netPostage',e.target.value)}
-                      style={inputStyle}
-                    />
-                  </td>
-                  <td style={cellStyle}>
-                    <input
-                      type="number" step="0.01"
-                      value={r.discount}
-                      onChange={e=>updateRowField(rawIdx,'discount',e.target.value)}
-                      style={inputStyle}
-                    />
-                  </td>
-                  <td style={cellStyle}>
-                    <button onClick={()=>saveRow(rawIdx)} style={actionButtonStyle}>Save</button>
-                    <button onClick={()=>deleteRow(rawIdx)} style={actionButtonStyle}>Delete</button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      )}
+      {rows.length > 0 && (
+  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+    <thead style={{ backgroundColor: '#1f2937', color: '#fff' }}>
+      <tr>
+        {[
+          'PROJECT NAME',
+          'PROJECT #',
+          'JOB #',
+          'PRODUCT TYPE',
+          'PIECE WEIGHT',
+          'QUANTITY',
+          'TOTAL POSTAGE',
+          'NET POSTAGE',
+          'DISCOUNT',
+          'FORMAT',
+          'PAGE COUNT',
+          'ACTIONS',
+        ].map(h => (
+          <th
+            key={h}
+            style={{
+              padding: '0.5rem',
+              minWidth: ['PROJECT NAME', 'PRODUCT TYPE'].includes(h)
+                ? '150px'
+                : '80px',
+            }}
+          >
+            {h}
+          </th>
+        ))}
+      </tr>
+    </thead>
+    <tbody>
+      {sortedRows().map((r, idx) => {
+        const rawIdx = findIndex(r);
+        const highlight = idx === 0 ? { backgroundColor: '#e0f7fa' } : {};
+        return (
+          <tr key={idx} style={highlight}>
+            <td style={cellStyle}>
+              <input
+                value={r.projectDescription}
+                onChange={e =>
+                  updateRowField(rawIdx, 'projectDescription', e.target.value)
+                }
+                style={inputStyle}
+              />
+            </td>
+            <td style={cellStyle}>
+              <input
+                value={r.projectId}
+                onChange={e =>
+                  updateRowField(rawIdx, 'projectId', e.target.value)
+                }
+                style={inputStyle}
+              />
+            </td>
+            <td style={cellStyle}>
+              <input
+                value={r.jobId}
+                onChange={e =>
+                  updateRowField(rawIdx, 'jobId', e.target.value)
+                }
+                style={inputStyle}
+              />
+            </td>
+            <td style={cellStyle}>
+              <select
+                value={r.productType}
+                onChange={e =>
+                  updateRowField(rawIdx, 'productType', e.target.value)
+                }
+                style={inputStyle}
+              >
+                {[
+                  'Flats',
+                  'Letters',
+                  'First Class Letters',
+                  'Post Card',
+                  'First Class Flats',
+                ].map(opt => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            </td>
+            <td style={cellStyle}>
+              <input
+                type="number"
+                step="0.0001"
+                value={r.pieceWeight}
+                onChange={e =>
+                  updateRowField(rawIdx, 'pieceWeight', e.target.value)
+                }
+                style={inputStyle}
+              />
+            </td>
+            <td style={cellStyle}>
+              <input
+                type="number"
+                value={r.quantity}
+                onChange={e =>
+                  updateRowField(rawIdx, 'quantity', e.target.value)
+                }
+                style={inputStyle}
+              />
+            </td>
+            <td style={cellStyle}>
+              <input
+                type="number"
+                step="0.01"
+                value={r.totalPostage}
+                onChange={e =>
+                  updateRowField(rawIdx, 'totalPostage', e.target.value)
+                }
+                style={inputStyle}
+              />
+            </td>
+            <td style={cellStyle}>
+              <input
+                type="number"
+                step="0.01"
+                value={r.netPostage}
+                onChange={e =>
+                  updateRowField(rawIdx, 'netPostage', e.target.value)
+                }
+                style={inputStyle}
+              />
+            </td>
+            <td style={cellStyle}>
+              <input
+                type="number"
+                step="0.01"
+                value={r.discount}
+                onChange={e =>
+                  updateRowField(rawIdx, 'discount', e.target.value)
+                }
+                style={inputStyle}
+              />
+            </td>
+            <td style={cellStyle}>
+              <select
+                value={r.format}
+                onChange={e => updateRowField(rawIdx, 'format', e.target.value)}
+                style={inputStyle}
+              >
+                {['Super Slim', 'Mini Flat', 'Letter Packet'].map(opt => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            </td>
+            <td style={cellStyle}>
+              <select
+                value={r.pageCount}
+                onChange={e =>
+                  updateRowField(rawIdx, 'pageCount', e.target.value)
+                }
+                style={inputStyle}
+              >
+                {['32', '52', '100'].map(opt => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            </td>
+            <td style={cellStyle}>
+              <button
+                onClick={() => saveRow(rawIdx)}
+                style={actionButtonStyle}
+              >
+                Save
+              </button>
+              <button
+                onClick={() => deleteRow(rawIdx)}
+                style={actionButtonStyle}
+              >
+                Delete
+              </button>
+            </td>
+          </tr>
+        );
+      })}
+    </tbody>
+  </table>
+)}
+
     </div>
   );
 }
