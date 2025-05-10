@@ -2,7 +2,8 @@ import os
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, text, func, and_, desc
+
 
 app = Flask(__name__, static_folder="static", static_url_path="")
 CORS(app)
@@ -44,6 +45,7 @@ class Project(db.Model):
     project_id          = db.Column(db.String(100), nullable=True)
     format              = db.Column(db.String(50), nullable=True)
     page_count          = db.Column(db.Integer, nullable=True)
+    date                = db.Column(db.String(10), nullable=True)  # YYYY/MM/DD
 
     def to_dict(self):
         return {
@@ -59,7 +61,9 @@ class Project(db.Model):
             "project_id":           self.project_id,
             "format":               self.format,
             "page_count":           self.page_count,
+            "date":                 self.date,
         }
+
 
 
 class TransactionDetail(db.Model):
@@ -105,7 +109,6 @@ def server_error(e):
 def list_projects():
     return jsonify([p.to_dict() for p in Project.query.all()])
 
-
 @app.route("/mailings/<int:id>", methods=["PUT"])
 def update_project(id):
     proj = Project.query.get_or_404(id)
@@ -118,6 +121,7 @@ def update_project(id):
         "net_postage":    float,
         "discount":       float,
         "page_count":     int,
+        "date":           lambda v: v  # keep string YYYY/MM/DD
     }
     for key, caster in casts.items():
         if key in data:
@@ -152,6 +156,7 @@ def create_project():
         project_id          = data.get("project_id"),
         format              = data.get("format"),
         page_count          = data.get("page_count"),
+        date                = data.get("date")
     )
     db.session.add(proj)
     db.session.commit()
@@ -227,6 +232,88 @@ def delete_transaction(id):
     db.session.commit()
     return "", 204
 
+# ──────────────────────────────────────────────────────────────────────────────
+# Reporting Endpoints
+# ──────────────────────────────────────────────────────────────────────────────
+@app.route('/reports/lookup_formats', methods=['GET'])
+def lookup_formats():
+    rows = db.session.query(Project.format, Project.page_count).distinct().all()
+    lookup = {}
+    for fmt, pc in rows:
+        lookup.setdefault(fmt, []).append(pc)
+    return jsonify(lookup)
+
+@app.route('/reports/project_summary', methods=['GET'])
+def project_summary():
+    fmt      = request.args.get('format')
+    page_ct  = request.args.get('page_count', type=int)
+    start    = request.args.get('start_date')   # YYYY-MM-DD
+    end      = request.args.get('end_date')     # YYYY-MM-DD
+
+    # build base filter
+    filters = [Project.format == fmt, Project.page_count == page_ct]
+    if start:
+        filters.append(Project.date >= start)
+    if end:
+        filters.append(Project.date <= end)
+
+    projects = (
+        Project.query
+            .filter(and_(*filters))
+            .order_by(Project.project_description)
+            .all()
+    )
+    result = [{
+        'project_description': p.project_description,
+        'project_id':          p.id,
+        'format':              p.format,
+        'page_count':          p.page_count,
+        'job_id':              p.job_id,
+        'piece_weight':        p.piece_weight,
+        'quantity':            p.quantity
+    } for p in projects]
+    return jsonify(result)
+
+
+@app.route('/reports/summary_by_entry', methods=['GET'])
+def summary_by_entry():
+    fmt     = request.args.get('format')
+    page_ct = request.args.get('page_count', type=int)
+    start   = request.args.get('start_date')
+    end     = request.args.get('end_date')
+
+    # base join + group filters
+    proj_filters = [Project.format == fmt, Project.page_count == page_ct]
+    if start:
+        proj_filters.append(Project.date >= start)
+    if end:
+        proj_filters.append(Project.date <= end)
+
+    q = (
+        db.session.query(
+            TransactionDetail.entry,
+            TransactionDetail.price_category,
+            func.sum(TransactionDetail.number_of_pieces).label('pieces'),
+            func.sum(TransactionDetail.net_postage).label('total')
+        )
+        .join(Project, Project.id == TransactionDetail.project_id)
+        .filter(and_(*proj_filters))
+        .group_by(TransactionDetail.entry, TransactionDetail.price_category)
+        .order_by(TransactionDetail.entry, desc(func.sum(TransactionDetail.net_postage)))
+        .all()
+    )
+    result = [{
+        'entry':          row.entry,
+        'price_category': row.price_category,
+        'pieces':         int(row.pieces),
+        'total':          float(row.total)
+    } for row in q]
+    return jsonify(result)
+
+if __name__ == '__main__':
+    app.run(debug=True)
+
+
 # ─── Serve React build ──────────────────────────────────────────────────────
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
@@ -257,7 +344,12 @@ with app.app_context():
         db.session.execute(
             text("ALTER TABLE projects ADD COLUMN page_count INTEGER")
         )
-
+        
+    if 'date' not in existing_cols:
+        db.session.execute(
+            text("ALTER TABLE projects ADD COLUMN date VARCHAR(10)")
+            )
+        
     # Persist the schema changes
     db.session.commit()
 
