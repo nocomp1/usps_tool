@@ -240,7 +240,8 @@ export default function CreateProjectForm({ onCreate }) {
 
   // Render
   return (
-    <div style={{maxWidth:'100%',margin:'2rem auto'}}>
+    <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem 0' }}>
+     <div style={{ textAlign: 'left' }}>
       {message && <div style={{color:'red',marginBottom:'1rem'}}>{message}</div>}
 
       {/* Import controls */}
@@ -378,7 +379,7 @@ export default function CreateProjectForm({ onCreate }) {
           <thead style={{backgroundColor:'#1f2937',color:'#fff'}}>
             <tr>
               {[ 'PROJECT NAME','PROJECT #','FORMAT','PAGE COUNT','JOB #','PRODUCT TYPE','PIECE WEIGHT','QUANTITY','TOTAL POSTAGE','NET POSTAGE','DISCOUNT','ACTIONS' ]
-                .map(h=><th key={h} style={{padding:'0.5rem',minWidth:['PROJECT NAME','PRODUCT TYPE'].includes(h)?'150px':'80px'}}>{h}</th>)}
+                .map(h=><th key={h} style={{padding:'0.5rem',minWidth:['PROJECT NAME','PRODUCT TYPE','TOTAL POSTAGE'].includes(h)?'150px':'80px'}}>{h}</th>)}
             </tr>
           </thead>
           <tbody>
@@ -404,6 +405,7 @@ export default function CreateProjectForm({ onCreate }) {
           </tbody>
         </table>
       )}
+    </div>
     </div>
   );
 }
