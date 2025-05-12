@@ -26,6 +26,38 @@ export default function CreateProjectForm({ onCreate }) {
   // Strip non-numeric
   const sanitizeNumber = v => v != null ? v.toString().replace(/[^0-9.-]/g, '') : '';
 
+
+// Parse date from various Excel formats (m/d/yy, m/d/yyyy, Excel serial, JS Date)
+const parseExcelDate = val => {
+    if (!val) return '';
+    // JS Date object
+    if (val instanceof Date && !isNaN(val)) {
+      const y = val.getFullYear();
+      const m = String(val.getMonth() + 1).padStart(2, '0');
+      const d = String(val.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+    // Excel serial number
+    if (typeof val === 'number') {
+      const date = new Date((val - (25567 + 2)) * 86400 * 1000);
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const d = String(date.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+    // String formats
+    const str = String(val).trim();
+    const parts = str.split(/[\/\-]/);
+    if (parts.length === 3) {
+      let [mm, dd, yy] = parts.map(p => parseInt(p, 10));
+      if (yy < 100) yy += 2000;
+      const m = String(mm).padStart(2, '0');
+      const d = String(dd).padStart(2, '0');
+      return `${yy}-${m}-${d}`;
+    }
+    return '';
+  };
+
   // Blank row template
   const blankRow = () => ({
     id: null,
@@ -118,6 +150,7 @@ export default function CreateProjectForm({ onCreate }) {
       const raw = XLSX.utils.sheet_to_json(sheet, { header: 1 });
       if (raw.length < 5) throw new Error('Unexpected format');
       const [pd, pi, ji, pt, pw, qty, tp, np, dt] = raw[1];
+      const parsedDate = parseExcelDate(dt);
       const proj = {
         project_description: pd,
         project_id: pi,
@@ -130,7 +163,7 @@ export default function CreateProjectForm({ onCreate }) {
         discount: 0,
         format: importFormat,
         page_count: parseInt(importPageCount, 10),
-        date: dt || ''
+        date: parsedDate
       };
       const details = raw.slice(4)
         .filter(r => r && r.length >= 9)

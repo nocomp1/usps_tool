@@ -190,9 +190,12 @@ def create_transaction():
     if not proj:
         return jsonify({"error": "Invalid project_id"}), 400
 
+    # default category to "None" if missing or null
+    category_val = data.get("category") or "None"
+
     tx = TransactionDetail(
         project_id        = int(data["project_id"]),
-        category          = data["category"],
+        category          = category_val,
         product           = data["product"],
         entry             = data["entry"],
         price_category    = data["price_category"],
