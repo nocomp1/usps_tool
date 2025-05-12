@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
 
 export default function CreateProjectForm({ onCreate }) {
@@ -23,6 +23,8 @@ export default function CreateProjectForm({ onCreate }) {
   const [pageCountOptions, setPageCountOptions] = useState(defaultPageCountOptions);
   const [newPageCountOption, setNewPageCountOption] = useState('');
 
+  const [isImporting, setIsImporting] = useState(false);
+  const dialogRef = useRef(null);
   // Strip non-numeric
   const sanitizeNumber = v => v != null ? v.toString().replace(/[^0-9.-]/g, '') : '';
 
@@ -110,6 +112,7 @@ const parseExcelDate = val => {
       .catch(console.error);
   }, [onCreate]);
 
+  
   // Update field
   const updateRowField = (i, field, value) => {
     const copy = [...rows];
@@ -192,6 +195,7 @@ const parseExcelDate = val => {
 
   const handleConfirmImport = async () => {
     if (!parsedProject) return;
+    setIsImporting(true);
     setMessage('Importing...');
     try {
       const resp = await fetch('/mailings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(parsedProject)});
@@ -207,7 +211,10 @@ const parseExcelDate = val => {
     } catch(e) {
       console.error(e);
       setMessage(`Import error: ${e.message}`);
-    }
+    }finally {
+        // ← always turn it off when you’re done (success or fail)
+        setIsImporting(false);
+      }
   };
   const handleCancelImport = () => { setParsedProject(null); setParsedDetails([]); setMessage('Import canceled'); };
 
@@ -350,8 +357,34 @@ const parseExcelDate = val => {
           </table>
         )}
       </div>
+    
+      <dialog
+  ref={dialogRef}
+  open={isImporting}
+  style={{
+    padding: 0,
+    border: 'none',
+    background: 'rgba(0,0,0,0.4)',
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    width: '100vw',
+    height: '100vh',
+    display: isImporting ? 'flex' : 'none',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 9999,
+  }}
+>
+  <progress />
+</dialog>
+
+    
+    
     </div>
+
   );
+  
 }
 
 // Styles
