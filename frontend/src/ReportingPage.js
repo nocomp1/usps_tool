@@ -12,45 +12,37 @@ export default function ReportingPage() {
   const [summaryRows, setSummaryRows] = useState([]);
   const [increases, setIncreases] = useState([]);
 
-  // Populate format and page count options from existing projects
+  // Populate format and page count options
   useEffect(() => {
     fetch('/mailings')
       .then(res => res.json())
       .then(projects => {
-        const formats = Array.from(
-          new Set(projects.map(p => p.format).filter(f => f))
-        );
-        setFormatOptions(formats);
-        const counts = Array.from(
-          new Set(projects.map(p => p.page_count?.toString()).filter(pc => pc))
-        );
-        setPageCountOptions(counts);
+        setFormatOptions(Array.from(new Set(projects.map(p => p.format).filter(f => f))));
+        setPageCountOptions(Array.from(new Set(projects.map(p => p.page_count?.toString()).filter(pc => pc))));
       })
       .catch(console.error);
   }, []);
 
-  // Initialize increase percentages when summaryRows change
+  // Reset increases when summaryRows change
   useEffect(() => {
     setIncreases(summaryRows.map(() => 0));
   }, [summaryRows]);
 
-  // Fetch detail and summary data with optional date range
+  // Fetch detail & summary
   const runReport = async () => {
     try {
       const params = new URLSearchParams();
-      if (selectedFormat) params.set('format', selectedFormat);
+      if (selectedFormat)   params.set('format', selectedFormat);
       if (selectedPageCount) params.set('page_count', selectedPageCount);
-      if (startDate) params.set('start_date', startDate);
-      if (endDate) params.set('end_date', endDate);
+      if (startDate)        params.set('start_date', startDate);
+      if (endDate)          params.set('end_date', endDate);
 
       const [detailRes, summaryRes] = await Promise.all([
-        fetch(`/reports/project_summary?${params.toString()}`),
-        fetch(`/reports/summary_by_entry?${params.toString()}`)
+        fetch(`/reports/project_summary?${params}`),
+        fetch(`/reports/summary_by_entry?${params}`)
       ]);
-      const detailJson = await detailRes.json();
-      const summaryJson = await summaryRes.json();
-      setData(detailJson);
-      setSummaryRows(summaryJson);
+      setData(await detailRes.json());
+      setSummaryRows(await summaryRes.json());
     } catch (err) {
       console.error(err);
     }
@@ -58,79 +50,98 @@ export default function ReportingPage() {
 
   const handleIncreaseChange = (idx, value) => {
     const val = parseFloat(value) || 0;
-    const arr = [...increases];
-    arr[idx] = val;
-    setIncreases(arr);
+    const next = [...increases];
+    next[idx] = val;
+    setIncreases(next);
   };
 
-  // Compute grand totals
-  const originalTotal = summaryRows.reduce((sum, s) => sum + s.total, 0);
-  const adjustedTotal = summaryRows.reduce(
-    (sum, s, i) => sum + s.total * (1 + (increases[i] || 0) / 100),
+  // Raw unit prices (full precision)
+  const unitPrices = summaryRows.map(s =>
+    s.pieces ? s.total / s.pieces : 0
+  );
+
+  // Grand totals computed from raw unit prices
+  const originalTotal = unitPrices.reduce(
+    (sum, up, i) => sum + up * summaryRows[i].pieces,
+    0
+  );
+  const adjustedTotal = unitPrices.reduce(
+    (sum, up, i) => sum + up * summaryRows[i].pieces * (1 + (increases[i] || 0) / 100),
     0
   );
   const differenceTotal = adjustedTotal - originalTotal;
 
+  // Total pieces for grand‐totals context
+  const totalPieces = summaryRows.reduce((sum, s) => sum + s.pieces, 0);
+
   const tdStyle = { border: '1px solid #ddd', padding: '0.5rem' };
   const thStyle = { padding: '0.5rem' };
-
   const formatCurrency = val =>
     val.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
-  // Export to Excel
+  // Export to Excel (includes unit‐price columns)
   const exportToExcel = () => {
     const wb = XLSX.utils.book_new();
 
-    // Detail sheet
+    // Details
     const detailData = data.map(r => ({
       'Project Name': r.project_description,
-      'Project #': r.project_id,
-      Format: r.format,
-      'Page Count': r.page_count,
-      'Job #': r.job_id,
+      'Project #':    r.project_id,
+      Format:         r.format,
+      'Page Count':   r.page_count,
+      'Job #':        r.job_id,
       'Piece Weight': r.piece_weight,
-      Quantity: r.quantity
+      Quantity:       r.quantity
     }));
     const wsDetail = XLSX.utils.json_to_sheet(detailData);
     XLSX.utils.book_append_sheet(wb, wsDetail, 'Details');
 
-    // Summary sheet
-    const summaryData = summaryRows.map(s => ({
-      Entry: s.entry,
+    // Summary
+    const summaryData = summaryRows.map((s, i) => ({
+      Entry:            s.entry,
       'Price Category': s.price_category,
-      Pieces: s.pieces,
-      Total: s.total
+      Pieces:           s.pieces,
+      Total:            s.total,
+      'Unit Price':     unitPrices[i]
     }));
     const wsSummary = XLSX.utils.json_to_sheet(summaryData);
     XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
 
-    // Adjustments sheet
-    const adjustData = summaryRows.map((s, i) => ({
-      Entry: s.entry,
-      'Price Category': s.price_category,
-      Pieces: s.pieces,
-      Total: s.total,
-      'Increase (%)': increases[i] || 0,
-      'New Total': s.total * (1 + ((increases[i] || 0) / 100))
-    }));
+    // Adjustments
+    const adjustData = summaryRows.map((s, i) => {
+      const up   = unitPrices[i];
+      const inc  = increases[i] || 0;
+      const newUP = up * (1 + inc / 100);
+      return {
+        Entry:             s.entry,
+        'Price Category':  s.price_category,
+        Pieces:            s.pieces,
+        Total:             s.total,
+        'Unit Price':      up,
+        'Increase (%)':    inc,
+        'New Total':       newUP * s.pieces,
+        'New Unit Price':  newUP
+      };
+    });
     const wsAdjust = XLSX.utils.json_to_sheet(adjustData);
     XLSX.utils.book_append_sheet(wb, wsAdjust, 'Adjustments');
 
-    // Grand Totals sheet
-    const gtData = [
-      {
-        'Total Original': originalTotal,
-        'Total Adjusted': adjustedTotal,
-        Difference: differenceTotal
-      }
-    ];
-    const wsGT = XLSX.utils.json_to_sheet(gtData);
+    // Grand Totals
+    const gt = [{
+      'Total Original':  originalTotal,
+      'Orig Unit Price': totalPieces ? originalTotal / totalPieces : 0,
+      'Total Adjusted':  adjustedTotal,
+      'Adj Unit Price':  totalPieces ? adjustedTotal / totalPieces : 0,
+      Difference:        differenceTotal,
+      'Diff Unit Price': totalPieces ? differenceTotal / totalPieces : 0
+    }];
+    const wsGT = XLSX.utils.json_to_sheet(gt);
     XLSX.utils.book_append_sheet(wb, wsGT, 'Grand Totals');
 
-    // Filename includes date filters if present
-    const fileName = `Report_${selectedFormat}_${selectedPageCount}` +
-      (startDate && endDate ? `_${startDate}-${endDate}` : '') + `.xlsx`;
-
+    const fileName =
+      `Report_${selectedFormat}_${selectedPageCount}` +
+      (startDate && endDate ? `_${startDate}-${endDate}` : '') +
+      `.xlsx`;
     XLSX.writeFile(wb, fileName);
   };
 
@@ -141,16 +152,22 @@ export default function ReportingPage() {
         {/* Controls */}
         <div>
           <label>Format:</label><br />
-          <select value={selectedFormat} onChange={e => setSelectedFormat(e.target.value)}>
+          <select
+            value={selectedFormat}
+            onChange={e => setSelectedFormat(e.target.value)}
+          >
             <option value="">--Select--</option>
-            {formatOptions.map(fmt => (
-              <option key={fmt} value={fmt}>{fmt}</option>
+            {formatOptions.map(f => (
+              <option key={f} value={f}>{f}</option>
             ))}
           </select>
         </div>
         <div>
           <label>Page Count:</label><br />
-          <select value={selectedPageCount} onChange={e => setSelectedPageCount(e.target.value)}>
+          <select
+            value={selectedPageCount}
+            onChange={e => setSelectedPageCount(e.target.value)}
+          >
             <option value="">--Select--</option>
             {pageCountOptions.map(pc => (
               <option key={pc} value={pc}>{pc}</option>
@@ -159,17 +176,32 @@ export default function ReportingPage() {
         </div>
         <div>
           <label>Start Date:</label><br />
-          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} />
+          <input
+            type="date"
+            value={startDate}
+            onChange={e => setStartDate(e.target.value)}
+          />
         </div>
         <div>
           <label>End Date:</label><br />
-          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} />
+          <input
+            type="date"
+            value={endDate}
+            onChange={e => setEndDate(e.target.value)}
+          />
         </div>
-        <button onClick={runReport} disabled={!selectedFormat || !selectedPageCount} style={{ alignSelf: 'flex-end', padding: '0.5rem 1rem' }}>
+        <button
+          onClick={runReport}
+          disabled={!selectedFormat || !selectedPageCount}
+          style={{ alignSelf: 'flex-end', padding: '0.5rem 1rem' }}
+        >
           Generate Report
         </button>
         {data.length > 0 && summaryRows.length > 0 && (
-          <button onClick={exportToExcel} style={{ alignSelf: 'flex-end', padding: '0.5rem 1rem' }}>
+          <button
+            onClick={exportToExcel}
+            style={{ alignSelf: 'flex-end', padding: '0.5rem 1rem' }}
+          >
             Export to Excel
           </button>
         )}
@@ -182,14 +214,13 @@ export default function ReportingPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead style={{ backgroundColor: '#1f2937', color: '#fff' }}>
                 <tr>
-                  {['Project Name','Project #','Format','Page Count','Job #','Piece Weight','Quantity'].map(h => (
-                    <th key={h} style={thStyle}>{h}</th>
-                  ))}
+                  {['Project Name','Project #','Format','Page Count','Job #','Piece Weight','Quantity']
+                    .map(h => <th key={h} style={thStyle}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {data.map((r, i) => (
-                  <tr key={i} style={i % 2 ? {} : { backgroundColor: '#f9fafb' }}>
+                  <tr key={i} style={i % 2 === 0 ? { backgroundColor: '#f9fafb' } : {}}>
                     <td style={tdStyle}>{r.project_description}</td>
                     <td style={tdStyle}>{r.project_id}</td>
                     <td style={tdStyle}>{r.format}</td>
@@ -202,15 +233,15 @@ export default function ReportingPage() {
               </tbody>
             </table>
           </div>
+
           {/* Summary Table */}
           <h4 style={{ marginTop: '1rem' }}>Summary by Entry & Price Category</h4>
           <div style={{ maxHeight: '250px', overflowY: 'auto', marginBottom: '1rem' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead style={{ backgroundColor: '#374151', color: '#fff' }}>
                 <tr>
-                  {['Entry','Price Category','Pieces','Total'].map(h => (
-                    <th key={h} style={thStyle}>{h}</th>
-                  ))}
+                  {['Entry','Price Category','Pieces','Total','Unit Price']
+                    .map(h => <th key={h} style={thStyle}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
@@ -218,15 +249,16 @@ export default function ReportingPage() {
                   const isNewGroup = i === 0 || s.entry !== arr[i-1].entry;
                   const rowStyle = isNewGroup
                     ? { backgroundColor: '#e0f2fe' }
-                    : i % 2
-                    ? {}
-                    : { backgroundColor: '#f3f4f6' };
+                    : i % 2 === 0
+                    ? { backgroundColor: '#f3f4f6' }
+                    : {};
                   return (
                     <tr key={i} style={rowStyle}>
                       <td style={tdStyle}>{s.entry}</td>
                       <td style={tdStyle}>{s.price_category}</td>
                       <td style={tdStyle}>{s.pieces}</td>
                       <td style={tdStyle}>{formatCurrency(s.total)}</td>
+                      <td style={tdStyle}>{formatCurrency(unitPrices[i])}</td>
                     </tr>
                   );
                 })}
@@ -240,21 +272,23 @@ export default function ReportingPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead style={{ backgroundColor: '#4B5563', color: '#fff' }}>
                 <tr>
-                  {['Entry','Price Category','Pieces','Total','Increase (%)','New Total'].map(h => (
-                    <th key={h} style={thStyle}>{h}</th>
-                  ))}
+                  {['Entry','Price Category','Pieces','Total','Unit Price','Increase (%)','New Total','New Unit Price']
+                    .map(h => <th key={h} style={thStyle}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {summaryRows.map((s, i) => {
-                  const inc = increases[i] || 0;
-                  const newTotal = s.total * (1 + inc/100);
+                  const up       = unitPrices[i];
+                  const inc      = increases[i] || 0;
+                  const newUP    = up * (1 + inc / 100);
+                  const newTotal = newUP * s.pieces;
                   return (
-                    <tr key={i} style={i % 2 ? {} : { backgroundColor: '#f9fafb' }}>
+                    <tr key={i} style={i % 2 === 0 ? { backgroundColor: '#f9fafb' } : {}}>
                       <td style={tdStyle}>{s.entry}</td>
                       <td style={tdStyle}>{s.price_category}</td>
                       <td style={tdStyle}>{s.pieces}</td>
                       <td style={tdStyle}>{formatCurrency(s.total)}</td>
+                      <td style={tdStyle}>{formatCurrency(up)}</td>
                       <td style={tdStyle}>
                         <input
                           type="number"
@@ -264,6 +298,7 @@ export default function ReportingPage() {
                         />
                       </td>
                       <td style={tdStyle}>{formatCurrency(newTotal)}</td>
+                      <td style={tdStyle}>{formatCurrency(newUP)}</td>
                     </tr>
                   );
                 })}
@@ -271,21 +306,33 @@ export default function ReportingPage() {
             </table>
           </div>
 
-          {/* Live Grand Totals with difference */}
-          <div style={{ marginTop: '1rem', padding: '0.75rem', border: '1px solid #ccc', borderRadius: '4px', backgroundColor: '#fafafa' }}>
+          {/* Live Grand Totals */}
+          <div style={{
+              marginTop: '1rem',
+              padding: '0.75rem',
+              border: '1px solid #ccc',
+              borderRadius: '4px',
+              backgroundColor: '#fafafa'
+            }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '1.1em', fontWeight: 'bold' }}>
               <thead style={{ backgroundColor: '#1f2937', color: '#fff' }}>
                 <tr>
                   <th style={thStyle}>Total Original</th>
+                  <th style={thStyle}>Orig Unit Price</th>
                   <th style={thStyle}>Total Adjusted</th>
+                  <th style={thStyle}>Adj Unit Price</th>
                   <th style={thStyle}>Difference</th>
+                  <th style={thStyle}>Diff Unit Price</th>
                 </tr>
               </thead>
               <tbody>
                 <tr style={{ backgroundColor: '#ffffff' }}>
                   <td style={tdStyle}>{formatCurrency(originalTotal)}</td>
+                  <td style={tdStyle}>{formatCurrency(originalTotal / totalPieces)}</td>
                   <td style={tdStyle}>{formatCurrency(adjustedTotal)}</td>
+                  <td style={tdStyle}>{formatCurrency(adjustedTotal / totalPieces)}</td>
                   <td style={tdStyle}>{formatCurrency(differenceTotal)}</td>
+                  <td style={tdStyle}>{formatCurrency(differenceTotal / totalPieces)}</td>
                 </tr>
               </tbody>
             </table>

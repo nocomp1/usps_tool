@@ -268,7 +268,7 @@ def project_summary():
     )
     result = [{
         'project_description': p.project_description,
-        'project_id':          p.id,
+        'project_id':          p.project_id,
         'format':              p.format,
         'page_count':          p.page_count,
         'job_id':              p.job_id,
