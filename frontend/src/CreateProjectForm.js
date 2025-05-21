@@ -72,7 +72,7 @@ const parseExcelDate = val => {
     quantity: '',
     totalPostage: '',
     netPostage: '',
-    discount: '',
+    discount: 0,
     format: formatOptions[0],
     pageCount: pageCountOptions[0]
   });
@@ -103,7 +103,7 @@ const parseExcelDate = val => {
           quantity: p.quantity,
           totalPostage: p.total_postage,
           netPostage: p.net_postage,
-          discount: p.discount || '',
+          discount: p.discount || 0.0,
           format: p.format || defaultFormatOptions[0],
           pageCount: p.page_count?.toString() || defaultPageCountOptions[0]
         }));
@@ -234,7 +234,10 @@ const parseExcelDate = val => {
       ['format','Format'],
       ['pageCount','Page Count'],
     ];
-    for (let [k,l] of req) if (!row[k]) return `${l} is required`;
+    
+    for (let [k,l] of req) {
+           if (row[k] === '' || row[k] == null) return `${l} is required`;
+         }
     return null;
   };
   const saveRow = async idx => {
@@ -327,9 +330,48 @@ const parseExcelDate = val => {
 
             <table style={{width:'100%',borderCollapse:'collapse',marginTop:'1rem'}}>
               <thead style={{backgroundColor:'#f0f0f0'}}>
-                <tr><th>Category</th><th>Product</th><th>Entry</th><th>Price Cat</th><th>Line Price</th><th># Pieces</th><th>Total Postage</th><th>Discount</th><th>Net</th></tr>
+              <tr>
+                  <th>Category</th>
+                  <th>Product</th>
+                  <th>Entry</th>
+                  <th>Price Cat</th>
+                  <th>Line Price</th>
+                  <th># Pieces</th>
+                  <th>Total Postage</th>
+                  <th>Discount</th>
+                 <th>Net</th>
+                </tr>
+              
               </thead>
-              <tbody>{parsedDetails.map((d,i)=>(<tr key={i}><td>{d.category}</td><td>{d.product}</td><td>{d.entry}</td><td>{d.price_category}</td><td>{d.line_price}</td><td>{d.number_of_pieces}</td><td>{d.total_postage}</td><td>{d.discount}</td><td>{d.net_postage}</td></tr>))}</tbody>
+              <tbody>
+              {parsedDetails.map((d,i) => (
+                  <tr key={i}>
+                    <td>{d.category}</td>
+                    <td>{d.product}</td>
+                    <td>{d.entry}</td>
+                    <td>{d.price_category}</td>
+                   <td>{d.line_price}</td>
+                    <td>{d.number_of_pieces}</td>
+                    <td>{d.total_postage}</td>
+                    <td>{d.discount}</td>
+                    <td>{d.net_postage}</td>
+                  </tr>
+                ))}
+                </tbody>
+
+                <tfoot>
+                <tr style={{borderTop: '1px solid #ccc'}}>
+                  <td colSpan={8} style={{textAlign: 'right', padding: '0.5rem', fontWeight: 'bold'}}>
+                    Total Net:
+                  </td>
+                  <td style={{padding: '0.5rem', fontWeight: 'bold'}}>
+                  {parsedDetails
+                     .reduce((sum, d) => sum + Number(d.net_postage), 0)
+                     .toLocaleString('en-US', { style: 'currency', currency: 'USD' })}
+                  </td>
+                </tr>
+              </tfoot>
+
             </table>
 
             <div style={{marginTop:'1rem'}}><button onClick={handleConfirmImport} style={{marginRight:'1rem'}}>Confirm Import</button><button onClick={handleCancelImport}>Cancel</button></div>
