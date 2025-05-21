@@ -172,7 +172,12 @@ def delete_project(id):
 
 @app.route("/transactions", methods=["GET"])
 def list_transactions():
-    return jsonify([t.to_dict() for t in TransactionDetail.query.all()])
+    project_id = request.args.get("project_id", type=int)
+    q = TransactionDetail.query
+    if project_id:
+        q = q.filter_by(project_id=project_id)
+    return jsonify([t.to_dict() for t in q.all()])
+
 
 @app.route("/transactions", methods=["POST"])
 def create_transaction():
