@@ -67,7 +67,7 @@ export default function TransactionDetailForm() {
         const project = projectsList.find(p => String(p.id) === selectedProjectId);
         const productType = project?.product_type || '';
 
-        fetch('/transactions')
+        fetch(`/transactions?project_id=${selectedProjectId}`)
             .then(r => r.json())
             .then(data => {
                 // filter to this project
@@ -219,6 +219,9 @@ export default function TransactionDetailForm() {
     };
 
     // ── Render ─────────────────────────────────────────────────────────────────
+    // after your hooks, before the return:
+    const project = projectsList.find(p => String(p.id) === selectedProjectId);
+    const productType = project?.product_type || '';
     return (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem 0' }}>
             <div style={{ textAlign: 'left' }}>
@@ -360,7 +363,7 @@ export default function TransactionDetailForm() {
                                             </select>
                                         </td>
                                         <td style={tdStyle}>
-                                            <input type="text" value={r.product} disabled style={inputStyle} />
+                                            <input type="text" value={productType} disabled style={inputStyle} />
                                         </td>
                                         <td style={tdStyle}>
                                             <select
