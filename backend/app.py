@@ -279,6 +279,7 @@ def project_summary():
         'project_id':          p.project_id,
         'format':              p.format,
         'page_count':          p.page_count,
+        'qualifications':      p.qualifications,
         'job_id':              p.job_id,
         'piece_weight':        p.piece_weight,
         'quantity':            p.quantity
@@ -302,6 +303,7 @@ def summary_by_entry():
 
     q = (
         db.session.query(
+            TransactionDetail.category,
             TransactionDetail.entry,
             TransactionDetail.price_category,
             func.sum(TransactionDetail.number_of_pieces).label('pieces'),
@@ -314,6 +316,7 @@ def summary_by_entry():
         .all()
     )
     result = [{
+        'category':       row.category,
         'entry':          row.entry,
         'price_category': row.price_category,
         'pieces':         int(row.pieces),

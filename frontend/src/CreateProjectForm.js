@@ -2,32 +2,32 @@ import React, { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
 
 export default function CreateProjectForm({ onCreate }) {
-    // Rows & UI state
-    const [rows, setRows] = useState([]);
-    const [message, setMessage] = useState('');
-    const [sortOrder, setSortOrder] = useState('desc');
-
-    // Import preview
-    const [parsedProject, setParsedProject] = useState(null);
-    const [parsedDetails, setParsedDetails] = useState([]);
-
-    // Import controls
-    const [importFormat, setImportFormat] = useState('Super Slim');
-    const [importPageCount, setImportPageCount] = useState('32');
-
-    // Format & Page Count persistence
-    const defaultFormatOptions = ['Super Slim', 'Mini Flat', 'Letter Packet'];
-    const defaultPageCountOptions = ['32', '52', '100'];
-    const [formatOptions, setFormatOptions] = useState(defaultFormatOptions);
-    const [newFormatOption, setNewFormatOption] = useState('');
-
-    // Default qualification options (mirror format behavior)
-    const defaultQualificationOptions = ['Diploma', 'Certificate', 'Degree'];
-    const [qualificationOptions, setQualificationOptions] = useState(defaultQualificationOptions);
-    const [newQualificationOption, setNewQualificationOption] = useState('');
-
-    const [pageCountOptions, setPageCountOptions] = useState(defaultPageCountOptions);
-    const [newPageCountOption, setNewPageCountOption] = useState('');
+        // ─── “Default qualification” must be declared BEFORE we use importQualification ─────────────────────────────────
+        const defaultQualificationOptions = ['None','First Class', 'Standard'];
+        const [qualificationOptions, setQualificationOptions] = useState(defaultQualificationOptions);
+        const [newQualificationOption, setNewQualificationOption] = useState('');
+    
+        // Rows & UI state
+        const [rows, setRows] = useState([]);
+        const [message, setMessage] = useState('');
+        const [sortOrder, setSortOrder] = useState('desc');
+    
+        // Import preview
+        const [parsedProject, setParsedProject] = useState(null);
+        const [parsedDetails, setParsedDetails] = useState([]);
+    
+        // Import controls (now that defaultQualificationOptions exists)
+        const [importFormat, setImportFormat] = useState('Super Slim');
+        const [importPageCount, setImportPageCount] = useState('32');
+        const [importQualification, setImportQualification] = useState(defaultQualificationOptions[0]);
+    
+        // Format & Page Count persistence
+        const defaultFormatOptions = ['Super Slim', 'Mini Flat', 'Letter Packet'];
+        const defaultPageCountOptions = ['32', '52', '100'];
+        const [formatOptions, setFormatOptions] = useState(defaultFormatOptions);
+        const [newFormatOption, setNewFormatOption] = useState('');
+        const [pageCountOptions, setPageCountOptions] = useState(defaultPageCountOptions);
+        const [newPageCountOption, setNewPageCountOption] = useState('');
 
 
 
@@ -199,6 +199,7 @@ export default function CreateProjectForm({ onCreate }) {
                 net_postage: parseFloat(sanitizeNumber(np)) || 0,
                 discount: 0,
                 format: importFormat,
+                qualifications: importQualification,
                 page_count: parseInt(importPageCount, 10),
                 date: parsedDate
             };
@@ -341,6 +342,12 @@ export default function CreateProjectForm({ onCreate }) {
                             {pageCountOptions.map(o => <option key={o} value={o}>{o}</option>)}
                         </select>
                     </label>
+
+                    <label>Qualification:
+                        <select value={importQualification} onChange={e => setImportQualification(e.target.value)}>
+                            {qualificationOptions.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                    </label>
                     <label>Import file: <input type="file" accept=".xlsx,.xls" onChange={handleFileUpload} /></label>
                 </div>
 
@@ -417,19 +424,52 @@ export default function CreateProjectForm({ onCreate }) {
                 {/* New Format/PageCount + Sort */}
                 {rows.length > 0 && (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
-                        <label>New Format:<input type="text" value={newFormatOption} onChange={e => setNewFormatOption(e.target.value)} placeholder="Type format" style={{ marginLeft: 4 }} /></label><button onClick={addFormatOption}>Add Format</button>
-                        <label>New Page Count:<input type="text" value={newPageCountOption} onChange={e => setNewPageCountOption(e.target.value)} placeholder="Type pages" style={{ marginLeft: 4 }} /></label><button onClick={addPageCountOption}>Add Page Count</button>
-                        <label>New Qualification:
-                            <input
-                                type="text"
-                                value={newQualificationOption}
-                                onChange={e => setNewQualificationOption(e.target.value)}
-                                placeholder="Type qualification"
-                                style={{ marginLeft: 4 }}
-                            />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <label>New Format:
+                                <input
+                                    type="text"
+                                    value={newFormatOption}
+                                    onChange={e => setNewFormatOption(e.target.value)}
+                                    placeholder="Type format"
+                                    style={{ marginLeft: 4 }}
+                                />
+                            </label>
+                            <button onClick={addFormatOption}>Add Format</button>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <label>New Page Count:
+                                <input
+                                    type="text"
+                                    value={newPageCountOption}
+                                    onChange={e => setNewPageCountOption(e.target.value)}
+                                    placeholder="Type pages"
+                                    style={{ marginLeft: 4 }}
+                                />
+                            </label>
+                            <button onClick={addPageCountOption}>Add Page Count</button>
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <label>New Qualification:
+                                <input
+                                    type="text"
+                                    value={newQualificationOption}
+                                    onChange={e => setNewQualificationOption(e.target.value)}
+                                    placeholder="Type qualification"
+                                    style={{ marginLeft: 4 }}
+                                />
+                            </label>
+                            <button onClick={addQualificationOption}>Add Qualification</button>
+                        </div>
+
+                        <label style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            Sort:
+                            <select value={sortOrder} onChange={e => setSortOrder(e.target.value)} style={{ marginLeft: 4 }}>
+                                <option value="desc">Descending</option>
+                                <option value="asc">Ascending</option>
+                            </select>
                         </label>
-                        <button onClick={addQualificationOption}>Add Qualification</button>
-                        <label style={{ marginLeft: 'auto' }}>Sort:<select value={sortOrder} onChange={e => setSortOrder(e.target.value)} style={{ marginLeft: 4 }}><option value="desc">Descending</option><option value="asc">Ascending</option></select></label>
                     </div>
                 )}
 

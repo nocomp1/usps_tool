@@ -4,8 +4,10 @@ import * as XLSX from 'xlsx';
 export default function ReportingPage() {
   const [formatOptions, setFormatOptions] = useState([]);
   const [pageCountOptions, setPageCountOptions] = useState([]);
+  const [qualificationOptions, setQualificationOptions] = useState([]);
   const [selectedFormat, setSelectedFormat] = useState('');
   const [selectedPageCount, setSelectedPageCount] = useState('');
+  const [selectedQualification, setSelectedQualification] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [data, setData] = useState([]);
@@ -19,6 +21,17 @@ export default function ReportingPage() {
       .then(projects => {
         setFormatOptions(Array.from(new Set(projects.map(p => p.format).filter(f => f))));
         setPageCountOptions(Array.from(new Set(projects.map(p => p.page_count?.toString()).filter(pc => pc))));
+        
+             setFormatOptions(
+                    Array.from(new Set(projects.map(p => p.format).filter(f => f)))
+                  );
+                  setPageCountOptions(
+                    Array.from(new Set(projects.map(p => p.page_count?.toString()).filter(pc => pc)))
+                  );
+                 setQualificationOptions(
+                    Array.from(new Set(projects.map(p => p.qualifications).filter(q => q)))
+                  );
+
       })
       .catch(console.error);
   }, []);
@@ -34,6 +47,8 @@ export default function ReportingPage() {
       const params = new URLSearchParams();
       if (selectedFormat)   params.set('format', selectedFormat);
       if (selectedPageCount) params.set('page_count', selectedPageCount);
+
+      if (selectedQualification) params.set('qualifications', selectedQualification);
       if (startDate)        params.set('start_date', startDate);
       if (endDate)          params.set('end_date', endDate);
 
@@ -60,19 +75,25 @@ export default function ReportingPage() {
     s.pieces ? s.total / s.pieces : 0
   );
 
-  // Grand totals computed from raw unit prices
-  const originalTotal = unitPrices.reduce(
-    (sum, up, i) => sum + up * summaryRows[i].pieces,
+  // Grand totals, but excluding any negative‐total rows
+  const originalTotal = summaryRows.reduce(
+    (sum, s) => (s.total > 0 ? sum + s.total : sum),
     0
   );
-  const adjustedTotal = unitPrices.reduce(
-    (sum, up, i) => sum + up * summaryRows[i].pieces * (1 + (increases[i] || 0) / 100),
+  const adjustedTotal = summaryRows.reduce(
+    (sum, s, i) =>
+      s.total > 0
+        ? sum + unitPrices[i] * (1 + (increases[i] || 0) / 100) * s.pieces
+        : sum,
     0
   );
   const differenceTotal = adjustedTotal - originalTotal;
 
-  // Total pieces for grand‐totals context
-  const totalPieces = summaryRows.reduce((sum, s) => sum + s.pieces, 0);
+  // Total pieces (only counting rows with s.total > 0)
+  const totalPieces = summaryRows.reduce(
+    (sum, s) => (s.total > 0 ? sum + s.pieces : sum),
+    0
+  );
 
   const tdStyle = { border: '1px solid #ddd', padding: '0.5rem' };
   const thStyle = { padding: '0.5rem' };
@@ -89,6 +110,7 @@ export default function ReportingPage() {
       'Project #':    r.project_id,
       Format:         r.format,
       'Page Count':   r.page_count,
+      'Qualification': r.qualifications,
       'Job #':        r.job_id,
       'Piece Weight': r.piece_weight,
       Quantity:       r.quantity
@@ -98,6 +120,7 @@ export default function ReportingPage() {
 
     // Summary
     const summaryData = summaryRows.map((s, i) => ({
+      Category:         s.category,
       Entry:            s.entry,
       'Price Category': s.price_category,
       Pieces:           s.pieces,
@@ -113,6 +136,7 @@ export default function ReportingPage() {
       const inc  = increases[i] || 0;
       const newUP = up * (1 + inc / 100);
       return {
+        Category:          s.category,
         Entry:             s.entry,
         'Price Category':  s.price_category,
         Pieces:            s.pieces,
@@ -175,6 +199,19 @@ export default function ReportingPage() {
           </select>
         </div>
         <div>
+          <label>Qualification:</label><br />
+          <select
+            value={selectedQualification}
+            onChange={e => setSelectedQualification(e.target.value)}
+          >
+            <option value="">--Select--</option>
+            {qualificationOptions.map(q => (
+              <option key={q} value={q}>{q}</option>
+           ))}
+          </select>
+        </div>
+
+        <div>
           <label>Start Date:</label><br />
           <input
             type="date"
@@ -192,7 +229,7 @@ export default function ReportingPage() {
         </div>
         <button
           onClick={runReport}
-          disabled={!selectedFormat || !selectedPageCount}
+          disabled={!selectedFormat || !selectedPageCount || !selectedQualification}
           style={{ alignSelf: 'flex-end', padding: '0.5rem 1rem' }}
         >
           Generate Report
@@ -214,7 +251,7 @@ export default function ReportingPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead style={{ backgroundColor: '#1f2937', color: '#fff' }}>
                 <tr>
-                  {['Project Name','Project #','Format','Page Count','Job #','Piece Weight','Quantity']
+                {['Project Name','Project #','Format','Page Count','Qualification','Job #','Piece Weight','Quantity']
                     .map(h => <th key={h} style={thStyle}>{h}</th>)}
                 </tr>
               </thead>
@@ -225,6 +262,7 @@ export default function ReportingPage() {
                     <td style={tdStyle}>{r.project_id}</td>
                     <td style={tdStyle}>{r.format}</td>
                     <td style={tdStyle}>{r.page_count}</td>
+                    <td style={tdStyle}>{r.qualifications}</td>
                     <td style={tdStyle}>{r.job_id}</td>
                     <td style={tdStyle}>{r.piece_weight}</td>
                     <td style={tdStyle}>{r.quantity}</td>
@@ -272,7 +310,7 @@ export default function ReportingPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead style={{ backgroundColor: '#4B5563', color: '#fff' }}>
                 <tr>
-                  {['Entry','Price Category','Pieces','Total','Unit Price','Increase (%)','New Total','New Unit Price']
+                  {['Category', 'Entry', 'Price Category', 'Pieces', 'Total', 'Unit Price', 'Increase (%)', 'New Total', 'New Unit Price']
                     .map(h => <th key={h} style={thStyle}>{h}</th>)}
                 </tr>
               </thead>
@@ -284,6 +322,7 @@ export default function ReportingPage() {
                   const newTotal = newUP * s.pieces;
                   return (
                     <tr key={i} style={i % 2 === 0 ? { backgroundColor: '#f9fafb' } : {}}>
+                      <td style={tdStyle}>{s.category}</td>
                       <td style={tdStyle}>{s.entry}</td>
                       <td style={tdStyle}>{s.price_category}</td>
                       <td style={tdStyle}>{s.pieces}</td>
