@@ -63,12 +63,20 @@ export default function ReportingPage() {
     }
   };
 
-  const handleIncreaseChange = (idx, value) => {
-    const val = parseFloat(value) || 0;
-    const next = [...increases];
-    next[idx] = val;
-    setIncreases(next);
-  };
+    const handleIncreaseChange = (idx, value) => {
+       // Allow the user to type "-" or clear the field without immediately coercing to 0
+        if (value === '' || value === '-') {
+          const next = [...increases];
+          next[idx] = value;
+          setIncreases(next);
+          return;
+        }
+        // Otherwise, parseFloat will convert "-5" to -5, or fall back to 0 if invalid
+        const val = parseFloat(value) || 0;
+        const next = [...increases];
+        next[idx] = val;
+        setIncreases(next);
+      };
 
   // Raw unit prices (full precision)
   const unitPrices = summaryRows.map(s =>
