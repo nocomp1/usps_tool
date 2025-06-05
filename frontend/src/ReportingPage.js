@@ -38,7 +38,7 @@ export default function ReportingPage() {
 
   // Reset increases when summaryRows change
   useEffect(() => {
-    setIncreases(summaryRows.map(() => 0));
+    setIncreases(summaryRows.map(() => ""));
   }, [summaryRows]);
 
   // Fetch detail & summary
@@ -338,8 +338,8 @@ export default function ReportingPage() {
                       <td style={tdStyle}>{formatCurrency(up)}</td>
                       <td style={tdStyle}>
                         <input
-                          type="number"
-                          value={inc}
+                          type="text"         // use text so "-" can be typed without browser resetting
+                          value={increases[i]}
                           onChange={e => handleIncreaseChange(i, e.target.value)}
                           style={{ width: '4rem', padding: '0.25rem' }}
                         />
