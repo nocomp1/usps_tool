@@ -260,9 +260,15 @@ def project_summary():
     page_ct  = request.args.get('page_count', type=int)
     start    = request.args.get('start_date')   # YYYY-MM-DD
     end      = request.args.get('end_date')     # YYYY-MM-DD
+    qual           = request.args.get('qualifications')
 
     # build base filter
-    filters = [Project.format == fmt, Project.page_count == page_ct]
+   
+    filters = [
+        Project.format == fmt,
+        Project.page_count == page_ct,
+        Project.qualifications == qual
+    ]
     if start:
         filters.append(Project.date >= start)
     if end:
@@ -293,9 +299,15 @@ def summary_by_entry():
     page_ct = request.args.get('page_count', type=int)
     start   = request.args.get('start_date')
     end     = request.args.get('end_date')
+    qual           = request.args.get('qualifications')
 
     # base join + group filters
-    proj_filters = [Project.format == fmt, Project.page_count == page_ct]
+  
+    proj_filters = [
+        Project.format == fmt,
+        Project.page_count == page_ct,
+        Project.qualifications == qual
+    ]
     if start:
         proj_filters.append(Project.date >= start)
     if end:
