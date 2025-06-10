@@ -44,6 +44,7 @@ class Project(db.Model):
     job_id              = db.Column(db.String(100), nullable=True)
     project_id          = db.Column(db.String(100), nullable=True)
     format              = db.Column(db.String(50), nullable=True)
+    qualifications      = db.Column(db.String(50), nullable=True)
     page_count          = db.Column(db.Integer, nullable=True)
     date                = db.Column(db.String(10), nullable=True)  # YYYY/MM/DD
 
@@ -60,6 +61,7 @@ class Project(db.Model):
             "job_id":               self.job_id,
             "project_id":           self.project_id,
             "format":               self.format,
+            "qualifications":       self.qualifications,
             "page_count":           self.page_count,
             "date":                 self.date,
         }
@@ -126,7 +128,7 @@ def update_project(id):
     for key, caster in casts.items():
         if key in data:
             setattr(proj, key, caster(data[key]))
-    for key in ("project_description", "product_type", "job_id", "project_id", "format"):  
+    for key in ("project_description", "product_type", "job_id", "project_id", "format", "qualifications"):  
         if key in data:
             setattr(proj, key, data[key])
 
@@ -155,6 +157,7 @@ def create_project():
         job_id              = data.get("job_id"),
         project_id          = data.get("project_id"),
         format              = data.get("format"),
+        qualifications      = data.get("qualifications"),
         page_count          = data.get("page_count"),
         date                = data.get("date")
     )
@@ -257,9 +260,15 @@ def project_summary():
     page_ct  = request.args.get('page_count', type=int)
     start    = request.args.get('start_date')   # YYYY-MM-DD
     end      = request.args.get('end_date')     # YYYY-MM-DD
+    qual           = request.args.get('qualifications')
 
     # build base filter
-    filters = [Project.format == fmt, Project.page_count == page_ct]
+   
+    filters = [
+        Project.format == fmt,
+        Project.page_count == page_ct,
+        Project.qualifications == qual
+    ]
     if start:
         filters.append(Project.date >= start)
     if end:
@@ -276,6 +285,7 @@ def project_summary():
         'project_id':          p.project_id,
         'format':              p.format,
         'page_count':          p.page_count,
+        'qualifications':      p.qualifications,
         'job_id':              p.job_id,
         'piece_weight':        p.piece_weight,
         'quantity':            p.quantity
@@ -289,9 +299,15 @@ def summary_by_entry():
     page_ct = request.args.get('page_count', type=int)
     start   = request.args.get('start_date')
     end     = request.args.get('end_date')
+    qual           = request.args.get('qualifications')
 
     # base join + group filters
-    proj_filters = [Project.format == fmt, Project.page_count == page_ct]
+  
+    proj_filters = [
+        Project.format == fmt,
+        Project.page_count == page_ct,
+        Project.qualifications == qual
+    ]
     if start:
         proj_filters.append(Project.date >= start)
     if end:
@@ -299,6 +315,7 @@ def summary_by_entry():
 
     q = (
         db.session.query(
+            TransactionDetail.category,
             TransactionDetail.entry,
             TransactionDetail.price_category,
             func.sum(TransactionDetail.number_of_pieces).label('pieces'),
@@ -311,6 +328,7 @@ def summary_by_entry():
         .all()
     )
     result = [{
+        'category':       row.category,
         'entry':          row.entry,
         'price_category': row.price_category,
         'pieces':         int(row.pieces),
@@ -347,6 +365,13 @@ with app.app_context():
             text("ALTER TABLE projects ADD COLUMN format VARCHAR(50)")
         )
 
+    # Add qualifications column if missing
+    if 'qualifications' not in existing_cols:
+        # use session.execute for SQLAlchemy 2.x compatibility
+        db.session.execute(
+            text("ALTER TABLE projects ADD COLUMN qualifications VARCHAR(50)")
+        )
+        
     # Add page_count column if missing
     if 'page_count' not in existing_cols:
         db.session.execute(
