@@ -50,6 +50,7 @@ export default function TransactionDetailForm() {
         category: 'Piece',
         product: productType || '',
         entry: entryOptions[0],
+        qualification: qualification || '',
         price_category: priceCategoryOptions[0],
         line_price: '',
         number_of_pieces: '',
@@ -66,6 +67,7 @@ export default function TransactionDetailForm() {
         }
         const project = projectsList.find(p => String(p.id) === selectedProjectId);
         const productType = project?.product_type || '';
+        const qualification = project?.qualifications || '';
 
         fetch(`/transactions?project_id=${selectedProjectId}`)
             .then(r => r.json())
@@ -88,11 +90,15 @@ export default function TransactionDetailForm() {
                 // update dropdown-options state
                 setEntryOptions([...defaultEntryOptions, ...uniqueCustom]);
 
-                // prime the table (blank row first)
+                 // prime the table (blank row first), include qualification on each row
                 setRows([
-                    blankRow(productType),
-                    ...filtered.map(tx => ({ ...tx, product: productType }))
-                ]);
+                        blankRow(productType, qualification),
+                        ...filtered.map(tx => ({
+                            ...tx,
+                            product: tx.product,
+                            qualification: qualification
+                        }))
+                    ]);
             })
             .catch(console.error);
     }, [selectedProjectId, projectsList]);
@@ -222,6 +228,7 @@ export default function TransactionDetailForm() {
     // after your hooks, before the return:
     const project = projectsList.find(p => String(p.id) === selectedProjectId);
     const productType = project?.product_type || '';
+    const qualification = project?.qualifications || '';
     return (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem 0' }}>
             <div style={{ textAlign: 'left' }}>
@@ -320,8 +327,8 @@ export default function TransactionDetailForm() {
                     <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center' }}>
                         <thead style={{ backgroundColor: '#1f2937', color: '#fff' }}>
                             <tr>
-                                {[
-                                    '#', 'Category', 'Product', 'Entry', 'Price Cat',
+                            {[
+                                   '#', 'Category', 'Product', 'Qualification', 'Entry', 'Price Cat',
                                     'Line', 'Pieces', 'Total', 'Discount', 'Net', 'Actions'
                                 ].map(h => (
                                     <th
@@ -342,7 +349,7 @@ export default function TransactionDetailForm() {
                             </tr>
                         </thead>
                         <tbody>
-                            {sortedRows().map((r, idx) => {
+                        {sortedRows().map((r, idx) => {
                                 const rawIdx = findRawIndex(r);
                                 const highlight = idx === 0
                                     ? { backgroundColor: '#e0f7fa' }
@@ -364,6 +371,9 @@ export default function TransactionDetailForm() {
                                         </td>
                                         <td style={tdStyle}>
                                             <input type="text" value={productType} disabled style={inputStyle} />
+                                        </td>
+                                        <td style={tdStyle}>
+                                            <input type="text" value={qualification} disabled style={inputStyle} />
                                         </td>
                                         <td style={tdStyle}>
                                             <select
