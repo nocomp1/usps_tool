@@ -75,10 +75,11 @@ export default function ReportingPage() {
     );
 
     // 4) Savings buckets = sum of abs(net_postage) per entry
-    const sumAbsNet = entryName =>
-      allTx
-        .filter(tx => tx.entry === entryName)
-        .reduce((sum, tx) => sum + Math.abs(tx.net_postage), 0);
+  // new — trim whitespace before comparing
+const sumAbsNet = entryName =>
+  allTx
+    .filter(tx => tx.entry && tx.entry.trim() === entryName)
+    .reduce((sum, tx) => sum + Math.abs(tx.net_postage), 0);
 
     const promoSavings = sumAbsNet('Sustainability');
     const addOn1Savings = sumAbsNet('Informed Delivery');
