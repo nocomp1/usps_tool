@@ -14,27 +14,109 @@ export default function ReportingPage() {
   const [summaryRows, setSummaryRows] = useState([]);
   const [increases, setIncreases] = useState([]);
 
+  // ── Promo Savings state ────────────────────────────────────────────────
+  const [jobsList, setJobsList] = useState([]);             // all projects
+  const [selectedJobId, setSelectedJobId] = useState('');   // chosen job number
+  const [promoSummary, setPromoSummary] = useState(null);   // one-row summary
+
   // Populate format and page count options
   useEffect(() => {
     fetch('/mailings')
       .then(res => res.json())
       .then(projects => {
-        setFormatOptions(Array.from(new Set(projects.map(p => p.format).filter(f => f))));
-        setPageCountOptions(Array.from(new Set(projects.map(p => p.page_count?.toString()).filter(pc => pc))));
-        
-             setFormatOptions(
-                    Array.from(new Set(projects.map(p => p.format).filter(f => f)))
-                  );
-                  setPageCountOptions(
-                    Array.from(new Set(projects.map(p => p.page_count?.toString()).filter(pc => pc)))
-                  );
-                 setQualificationOptions(
-                    Array.from(new Set(projects.map(p => p.qualifications).filter(q => q)))
-                  );
+        // keep the full list for Promo Savings
+        setJobsList(projects)
+        // setFormatOptions(Array.from(new Set(projects.map(p => p.format).filter(f => f))));
+        // setPageCountOptions(Array.from(new Set(projects.map(p => p.page_count?.toString()).filter(pc => pc))));
+
+        setFormatOptions(
+          Array.from(new Set(projects.map(p => p.format).filter(f => f)))
+        );
+        setPageCountOptions(
+          Array.from(new Set(projects.map(p => p.page_count?.toString()).filter(pc => pc)))
+        );
+        setQualificationOptions(
+          Array.from(new Set(projects.map(p => p.qualifications).filter(q => q)))
+        );
 
       })
       .catch(console.error);
   }, []);
+
+
+
+  // ── handle project/job selection for Promo Savings ───────────────────────
+  const handleJobChange = async e => {
+    const jobId = e.target.value;
+    setSelectedJobId(jobId);
+
+    // Clear summary if nothing selected
+    if (!jobId) {
+      setPromoSummary(null);
+      return;
+    }
+
+    // 1) All projects sharing that job number
+    const projects = jobsList.filter(p => String(p.job_id) === jobId);
+
+    // 2) Pull every project's transaction details
+    const txArrays = await Promise.all(
+      projects.map(p =>
+        fetch(`/transactions?project_id=${p.id}`)
+          .then(res => res.json())
+      )
+    );
+    const allTx = txArrays.flat();
+
+    // 3) CONS List = total number_of_pieces
+    const consList = allTx.reduce(
+      (sum, tx) => sum + (tx.number_of_pieces || 0),
+      0
+    );
+
+    // 4) Savings buckets = sum of abs(net_postage) per entry
+    const sumAbsNet = entryName =>
+      allTx
+        .filter(tx => tx.entry === entryName)
+        .reduce((sum, tx) => sum + Math.abs(tx.net_postage), 0);
+
+    const promoSavings = sumAbsNet('Sustainability');
+    const addOn1Savings = sumAbsNet('Informed Delivery');
+    const addOn2Savings = sumAbsNet('TSI');
+
+    // 5) Total Postage base = sum of every project.total_postage
+    const totalPostageSum = projects.reduce(
+      (sum, p) => sum + (p.total_postage || 0),
+      0
+    );
+
+    // 6) Percentage taken = (netSavings / totalPostageSum) * 100
+    const totalNetSavings = promoSavings + addOn1Savings + addOn2Savings;
+    const percentageTaken =
+      totalPostageSum > 0
+        ? (totalNetSavings / totalPostageSum) * 100
+        : 0;
+
+    // 7) Descriptive fields off the first project
+    const first = projects[0] || {};
+
+    setPromoSummary({
+      projectNumber: jobId,
+      projectDescription: first.project_description || '',
+      qualification: first.qualifications || '',
+      pageCount: first.page_count || '',
+      consList,
+      promoSavings,
+      addOn1Savings,
+      addOn2Savings,
+      percentageTaken
+    });
+  };
+
+
+
+
+
 
   // Reset increases when summaryRows change
   useEffect(() => {
@@ -45,12 +127,12 @@ export default function ReportingPage() {
   const runReport = async () => {
     try {
       const params = new URLSearchParams();
-      if (selectedFormat)   params.set('format', selectedFormat);
+      if (selectedFormat) params.set('format', selectedFormat);
       if (selectedPageCount) params.set('page_count', selectedPageCount);
 
       if (selectedQualification) params.set('qualifications', selectedQualification);
-      if (startDate)        params.set('start_date', startDate);
-      if (endDate)          params.set('end_date', endDate);
+      if (startDate) params.set('start_date', startDate);
+      if (endDate) params.set('end_date', endDate);
 
       const [detailRes, summaryRes] = await Promise.all([
         fetch(`/reports/project_summary?${params}`),
@@ -63,20 +145,20 @@ export default function ReportingPage() {
     }
   };
 
-    const handleIncreaseChange = (idx, value) => {
-       // Allow the user to type "-" or clear the field without immediately coercing to 0
-        if (value === '' || value === '-') {
-          const next = [...increases];
-          next[idx] = value;
-          setIncreases(next);
-          return;
-        }
-        // Otherwise, parseFloat will convert "-5" to -5, or fall back to 0 if invalid
-        const val = parseFloat(value) || 0;
-        const next = [...increases];
-        next[idx] = val;
-        setIncreases(next);
-      };
+  const handleIncreaseChange = (idx, value) => {
+    // Allow the user to type empty, "-", ".", or "-." without coercing
+    if (value === '' || value === '-' || value === '.' || value === '-.') {
+      const next = [...increases];
+      next[idx] = value;
+      setIncreases(next);
+      return;
+    }
+    // Otherwise, parseFloat will convert "-5" to -5, or fall back to 0 if invalid
+    const val = parseFloat(value) || 0;
+    const next = [...increases];
+    next[idx] = val;
+    setIncreases(next);
+  };
 
   // Raw unit prices (full precision)
   const unitPrices = summaryRows.map(s =>
@@ -115,44 +197,44 @@ export default function ReportingPage() {
     // Details
     const detailData = data.map(r => ({
       'Project Name': r.project_description,
-      'Project #':    r.project_id,
-      Format:         r.format,
-      'Page Count':   r.page_count,
+      'Project #': r.project_id,
+      Format: r.format,
+      'Page Count': r.page_count,
       'Qualification': r.qualifications,
-      'Job #':        r.job_id,
+      'Job #': r.job_id,
       'Piece Weight': r.piece_weight,
-      Quantity:       r.quantity
+      Quantity: r.quantity
     }));
     const wsDetail = XLSX.utils.json_to_sheet(detailData);
     XLSX.utils.book_append_sheet(wb, wsDetail, 'Details');
 
     // Summary
     const summaryData = summaryRows.map((s, i) => ({
-      Category:         s.category,
-      Entry:            s.entry,
+      Category: s.category,
+      Entry: s.entry,
       'Price Category': s.price_category,
-      Pieces:           s.pieces,
-      Total:            s.total,
-      'Unit Price':     unitPrices[i]
+      Pieces: s.pieces,
+      Total: s.total,
+      'Unit Price': unitPrices[i]
     }));
     const wsSummary = XLSX.utils.json_to_sheet(summaryData);
     XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
 
     // Adjustments
     const adjustData = summaryRows.map((s, i) => {
-      const up   = unitPrices[i];
-      const inc  = increases[i] || 0;
+      const up = unitPrices[i];
+      const inc = increases[i] || 0;
       const newUP = up * (1 + inc / 100);
       return {
-        Category:          s.category,
-        Entry:             s.entry,
-        'Price Category':  s.price_category,
-        Pieces:            s.pieces,
-        Total:             s.total,
-        'Unit Price':      up,
-        'Increase (%)':    inc,
-        'New Total':       newUP * s.pieces,
-        'New Unit Price':  newUP
+        Category: s.category,
+        Entry: s.entry,
+        'Price Category': s.price_category,
+        Pieces: s.pieces,
+        Total: s.total,
+        'Unit Price': up,
+        'Increase (%)': inc,
+        'New Total': newUP * s.pieces,
+        'New Unit Price': newUP
       };
     });
     const wsAdjust = XLSX.utils.json_to_sheet(adjustData);
@@ -160,11 +242,11 @@ export default function ReportingPage() {
 
     // Grand Totals
     const gt = [{
-      'Total Original':  originalTotal,
+      'Total Original': originalTotal,
       'Orig Unit Price': totalPieces ? originalTotal / totalPieces : 0,
-      'Total Adjusted':  adjustedTotal,
-      'Adj Unit Price':  totalPieces ? adjustedTotal / totalPieces : 0,
-      Difference:        differenceTotal,
+      'Total Adjusted': adjustedTotal,
+      'Adj Unit Price': totalPieces ? adjustedTotal / totalPieces : 0,
+      Difference: differenceTotal,
       'Diff Unit Price': totalPieces ? differenceTotal / totalPieces : 0
     }];
     const wsGT = XLSX.utils.json_to_sheet(gt);
@@ -176,6 +258,36 @@ export default function ReportingPage() {
       `.xlsx`;
     XLSX.writeFile(wb, fileName);
   };
+
+  // ── Export Promo Savings to Excel ────────────────────────────────────────
+  const exportPromoSavings = () => {
+    if (!promoSummary) return;
+
+    const wb = XLSX.utils.book_new();
+    const sheetData = [
+      {
+        'Project #': promoSummary.projectNumber,
+        'Project Description': promoSummary.projectDescription,
+        'Qualification': promoSummary.qualification,
+        'Page Count': promoSummary.pageCount,
+        'CONS List': promoSummary.consList,
+        'Promo Savings': promoSummary.promoSavings,
+        'Add on 1 Savings': promoSummary.addOn1Savings,
+        'Add on 2 Savings': promoSummary.addOn2Savings,
+        'Percentage': `${promoSummary.percentageTaken.toFixed(1)}%`,
+      },
+    ];
+    const ws = XLSX.utils.json_to_sheet(sheetData);
+    XLSX.utils.book_append_sheet(wb, ws, 'Promo Savings');
+    const fileName = `Promo_Savings_${selectedJobId}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+  };
+
+
+
+
+
+
 
   return (
     <div>
@@ -215,7 +327,7 @@ export default function ReportingPage() {
             <option value="">--Select--</option>
             {qualificationOptions.map(q => (
               <option key={q} value={q}>{q}</option>
-           ))}
+            ))}
           </select>
         </div>
 
@@ -259,7 +371,7 @@ export default function ReportingPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead style={{ backgroundColor: '#1f2937', color: '#fff' }}>
                 <tr>
-                {['Project Name','Project #','Format','Page Count','Qualification','Job #','Piece Weight','Quantity']
+                  {['Project Name', 'Project #', 'Format', 'Page Count', 'Qualification', 'Job #', 'Piece Weight', 'Quantity']
                     .map(h => <th key={h} style={thStyle}>{h}</th>)}
                 </tr>
               </thead>
@@ -286,18 +398,18 @@ export default function ReportingPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead style={{ backgroundColor: '#374151', color: '#fff' }}>
                 <tr>
-                  {['Entry','Price Category','Pieces','Total','Unit Price']
+                  {['Entry', 'Price Category', 'Pieces', 'Total', 'Unit Price']
                     .map(h => <th key={h} style={thStyle}>{h}</th>)}
                 </tr>
               </thead>
               <tbody>
                 {summaryRows.map((s, i, arr) => {
-                  const isNewGroup = i === 0 || s.entry !== arr[i-1].entry;
+                  const isNewGroup = i === 0 || s.entry !== arr[i - 1].entry;
                   const rowStyle = isNewGroup
                     ? { backgroundColor: '#e0f2fe' }
                     : i % 2 === 0
-                    ? { backgroundColor: '#f3f4f6' }
-                    : {};
+                      ? { backgroundColor: '#f3f4f6' }
+                      : {};
                   return (
                     <tr key={i} style={rowStyle}>
                       <td style={tdStyle}>{s.entry}</td>
@@ -324,9 +436,9 @@ export default function ReportingPage() {
               </thead>
               <tbody>
                 {summaryRows.map((s, i) => {
-                  const up       = unitPrices[i];
-                  const inc      = increases[i] || 0;
-                  const newUP    = up * (1 + inc / 100);
+                  const up = unitPrices[i];
+                  const inc = increases[i] || 0;
+                  const newUP = up * (1 + inc / 100);
                   const newTotal = newUP * s.pieces;
                   return (
                     <tr key={i} style={i % 2 === 0 ? { backgroundColor: '#f9fafb' } : {}}>
@@ -338,7 +450,8 @@ export default function ReportingPage() {
                       <td style={tdStyle}>{formatCurrency(up)}</td>
                       <td style={tdStyle}>
                         <input
-                          type="text"         // use text so "-" can be typed without browser resetting
+                          type="number"           // now shows spinner arrows
+                          step="any"              // allow any decimal precision
                           value={increases[i]}
                           onChange={e => handleIncreaseChange(i, e.target.value)}
                           style={{ width: '4rem', padding: '0.25rem' }}
@@ -355,12 +468,12 @@ export default function ReportingPage() {
 
           {/* Live Grand Totals */}
           <div style={{
-              marginTop: '1rem',
-              padding: '0.75rem',
-              border: '1px solid #ccc',
-              borderRadius: '4px',
-              backgroundColor: '#fafafa'
-            }}>
+            marginTop: '1rem',
+            padding: '0.75rem',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+            backgroundColor: '#fafafa'
+          }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '1.1em', fontWeight: 'bold' }}>
               <thead style={{ backgroundColor: '#1f2937', color: '#fff' }}>
                 <tr>
@@ -386,6 +499,99 @@ export default function ReportingPage() {
           </div>
         </>
       )}
+
+
+      {/* Promo Savings */}
+      <h3>Promo Savings</h3>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '1rem',
+        marginBottom: '1rem'
+      }}>
+        <label style={{ margin: 0 }}>
+          Project:&nbsp;
+          <select
+            value={selectedJobId}
+            onChange={handleJobChange}
+            style={{ padding: '0.25rem' }}
+          >
+            <option value="">-- Select Project --</option>
+            {jobsList.map(p => (
+              <option key={`${p.job_id}-${p.id}`} value={p.job_id}>
+                {p.project_description} || {p.job_id}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {promoSummary && (
+          <button
+            onClick={exportPromoSavings}
+            style={{ padding: '0.5rem 1rem' }}
+          >
+            Export Promo Savings
+          </button>
+        )}
+      </div>
+
+
+
+
+      {promoSummary && (
+        <table
+          style={{
+            width: '100%',
+            borderCollapse: 'collapse',
+            marginTop: '1rem',
+            textAlign: 'center'
+          }}
+        >
+          <thead style={{ backgroundColor: '#1f2937', color: '#fff' }}>
+            <tr>
+              <th style={thStyle}>Project #</th>
+              <th style={thStyle}>Project Description</th>
+              <th style={thStyle}>Qualification</th>
+              <th style={thStyle}>Page Count</th>
+              <th style={thStyle}>CONS List</th>
+              <th style={thStyle}>Promo Savings</th>
+              <th style={thStyle}>Add on 1 Savings</th>
+              <th style={thStyle}>Add on 2 Savings</th>
+              <th style={thStyle}>Percentage</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            <tr>
+              <td style={{ padding: '0.5rem', borderBottom: '1px solid #ddd' }}>
+                {promoSummary.projectNumber}
+              </td>
+              <td style={{ padding: '0.5rem', borderBottom: '1px solid #ddd' }}>
+                {promoSummary.projectDescription}
+              </td>
+              <td style={{ padding: '0.5rem', borderBottom: '1px solid #ddd' }}>
+                {promoSummary.qualification}
+              </td>
+              <td style={{ padding: '0.5rem', borderBottom: '1px solid #ddd' }}>
+                {promoSummary.pageCount}
+              </td>
+              <td style={{ padding: '0.5rem', borderBottom: '1px solid #ddd' }}>
+                {promoSummary.consList}
+              </td>
+              <td style={tdStyle}>{formatCurrency(promoSummary.promoSavings)}</td>
+              <td style={tdStyle}>{formatCurrency(promoSummary.addOn1Savings)}</td>
+              <td style={tdStyle}>{formatCurrency(promoSummary.addOn2Savings)}</td>
+              <td style={tdStyle}>
+                {promoSummary.percentageTaken.toFixed(1)}%
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      )}
+
+
+
+
     </div>
   );
 }
