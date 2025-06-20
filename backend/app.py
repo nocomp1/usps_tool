@@ -323,7 +323,12 @@ def summary_by_entry():
         )
         .join(Project, Project.id == TransactionDetail.project_id)
         .filter(and_(*proj_filters))
-        .group_by(TransactionDetail.entry, TransactionDetail.price_category)
+      .group_by(
+  TransactionDetail.category,
+  TransactionDetail.entry,
+  TransactionDetail.price_category
+)
+
         .order_by(TransactionDetail.entry, desc(func.sum(TransactionDetail.net_postage)))
         .all()
     )

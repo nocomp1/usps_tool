@@ -43,7 +43,16 @@ export default function ReportingPage() {
       .catch(console.error);
   }, []);
 
-
+    // which document to show in the inline PDF viewer (null → main view)
+    const [doc, setDoc] = useState(null);
+  
+    // S3 URLs for our documentation PDFs
+    const PDF_URLS = {
+      qualification:
+        'https://elasticbeanstalk-us-west-2-497439480790.s3.us-west-2.amazonaws.com/Reporting+Adjustments+and+Totals+Documentation.pdf',
+      promo:
+        'https://elasticbeanstalk-us-west-2-497439480790.s3.us-west-2.amazonaws.com/Promo+Savings+Reporting+Docs.pdf',
+    };
 
   // ── handle project/job selection for Promo Savings ───────────────────────
   const handleJobChange = async e => {
@@ -167,18 +176,24 @@ const sumAbsNet = entryName =>
   );
 
   // Grand totals, but excluding any negative‐total rows
+    // Grand totals, but excluding any negative‐total rows
   const originalTotal = summaryRows.reduce(
     (sum, s) => (s.total > 0 ? sum + s.total : sum),
     0
   );
   const adjustedTotal = summaryRows.reduce(
     (sum, s, i) =>
-      s.total > 0
+     s.total > 0
         ? sum + unitPrices[i] * (1 + (increases[i] || 0) / 100) * s.pieces
         : sum,
     0
   );
-  const differenceTotal = adjustedTotal - originalTotal;
+  // Only compute a non-zero difference if the user has entered at least one percent
+  const anyIncrease = increases.some(val => parseFloat(val));
+  const rawDifference = adjustedTotal - originalTotal;
+  const differenceTotal = anyIncrease
+    ? Math.max(0, +rawDifference.toFixed(2))
+    : 0;
 
   // Total pieces (only counting rows with s.total > 0)
   const totalPieces = summaryRows.reduce(
@@ -290,9 +305,66 @@ const sumAbsNet = entryName =>
 
 
 
-  return (
-    <div>
-      <h3>Qualification Reporting</h3>
+    return doc ? (
+        // INLINE PDF VIEWER
+        <div style={{ padding: '1rem' }}>
+         <button
+            onClick={() => setDoc(null)}
+            style={{
+              marginBottom: '1rem',
+              background: 'none',
+              border: 'none',
+              color: '#0366d6',
+              cursor: 'pointer',
+              fontSize: '1rem',
+            }}
+          >
+            ← Back
+         </button>
+    
+         <div
+  style={{
+    width: '100%',
+    height: '900px',      // pick whatever max height you need
+    overflow: 'auto',     // scroll if PDF is taller
+    border: '1px solid #ccc',
+    borderRadius: '4px'
+  }}
+>
+  <object
+    data={`${PDF_URLS[doc]}#navpanes=0&toolbar=0`}
+    type="application/pdf"
+    style={{
+      width: '100%',
+      height: '100%'
+    }}
+  >
+    <p>
+      Your browser doesn’t support inline PDFs.{' '}
+      <a
+        href={PDF_URLS[doc]}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Download the PDF.
+      </a>
+    </p>
+  </object>
+</div>
+
+        </div>
+      ) : (
+        <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <h3>Qualification Reporting</h3>
+        <a
+          href="#"
+          onClick={e => { e.preventDefault(); setDoc('qualification'); }}
+          style={{ color: 'blue', textDecoration: 'underline', cursor: 'pointer' }}
+        >
+          What is this
+        </a>
+      </div>
       <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
         {/* Controls */}
         <div>
@@ -503,7 +575,12 @@ const sumAbsNet = entryName =>
 
 
       {/* Promo Savings */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
       <h3>Promo Savings</h3>
+      <a href="#" onClick={e => { e.preventDefault(); setDoc('promo'); }}>
+        What is this
+      </a>
+    </div>
       <div style={{
         display: 'flex',
         alignItems: 'center',
