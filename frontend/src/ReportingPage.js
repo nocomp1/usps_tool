@@ -18,7 +18,7 @@ export default function ReportingPage() {
   const [jobsList, setJobsList] = useState([]);             // all projects
   const [selectedJobId, setSelectedJobId] = useState('');   // chosen job number
   const [promoSummary, setPromoSummary] = useState(null);   // one-row summary
-
+  const [showAudit, setShowAudit] = useState(false);
   // Populate format and page count options
   useEffect(() => {
     fetch('/mailings')
@@ -147,9 +147,44 @@ const sumAbsNet = entryName =>
       const [detailRes, summaryRes] = await Promise.all([
         fetch(`/reports/project_summary?${params}`),
         fetch(`/reports/summary_by_entry?${params}`)
-      ]);
-      setData(await detailRes.json());
-      setSummaryRows(await summaryRes.json());
+            ]);
+        
+            // 1) Pull in both datasets
+            const detailData  = await detailRes.json();
+            const rawSummary = await summaryRes.json();
+        
+            setData(detailData);
+        
+            // 2) Build a map of piece‐counts per entry+price_category
+            const pieceCounts = {};
+            rawSummary.forEach(r => {
+              if (r.category.toUpperCase() === 'PIECE') {
+                const key = `${r.entry}||${r.price_category}`;
+                pieceCounts[key] = r.pieces;
+              }
+            });
+        
+            // 3) Derive per‐entry weight = Qty × piece_weight
+            const pieceWeight = detailData[0]?.piece_weight || 0;
+            const decorated = rawSummary.map(r => {
+              const key  = `${r.entry}||${r.price_category}`;
+              const qty  = pieceCounts[key] || 0;
+              const wgt  = r.category.toUpperCase() === 'POUND'
+                ? qty * pieceWeight
+                : 0;
+              const unit = r.category.toUpperCase() === 'PIECE'
+                ? (qty ? r.total / qty : 0)
+                : (wgt ? r.total / wgt : 0);
+              return {
+                ...r,
+                pieces:     qty,
+                weight:     wgt,
+                unit_price: unit
+              };
+            });
+        
+            // 4) Feed the decorated rows into state
+            setSummaryRows(decorated);
     } catch (err) {
       console.error(err);
     }
@@ -170,10 +205,18 @@ const sumAbsNet = entryName =>
     setIncreases(next);
   };
 
-  // Raw unit prices (full precision)
-  const unitPrices = summaryRows.map(s =>
-    s.pieces ? s.total / s.pieces : 0
-  );
+    // Raw unit prices ($/piece or $/lb)
+     const unitPrices = summaryRows.map(s => {
+          // prefer backend‐decorated unit_price if present
+          if (s.unit_price !== undefined) {
+            return s.unit_price;
+          }
+          if (s.category.toUpperCase() === 'PIECE') {
+            return s.pieces ? s.total / s.pieces : 0;
+      }
+         // Pound rows (case-insensitive): divide by line-level weight
+         return s.weight ? s.total / s.weight : 0;
+    });
 
   // Grand totals, but excluding any negative‐total rows
     // Grand totals, but excluding any negative‐total rows
@@ -181,13 +224,16 @@ const sumAbsNet = entryName =>
     (sum, s) => (s.total > 0 ? sum + s.total : sum),
     0
   );
-  const adjustedTotal = summaryRows.reduce(
-    (sum, s, i) =>
-     s.total > 0
-        ? sum + unitPrices[i] * (1 + (increases[i] || 0) / 100) * s.pieces
-        : sum,
-    0
-  );
+    const adjustedTotal = summaryRows.reduce(
+        (sum, s, i) => {
+          if (s.total <= 0) return sum;
+          const pct = increases[i] || 0;
+          // Apply pct to the row’s total postage
+          const rowAdjusted = s.total * (1 + pct / 100);
+          return sum + rowAdjusted;
+        },
+        0
+      );
   // Only compute a non-zero difference if the user has entered at least one percent
   const anyIncrease = increases.some(val => parseFloat(val));
   const rawDifference = adjustedTotal - originalTotal;
@@ -200,6 +246,33 @@ const sumAbsNet = entryName =>
     (sum, s) => (s.total > 0 ? sum + s.pieces : sum),
     0
   );
+
+
+    // ── Audit rows: combine raw & adjusted values per summary group ─────────
+    const auditRows = summaryRows.map((s, i) => {
+      const pcs  = s.pieces || 0;
+      const wgt  = s.weight || 0;
+      const orig = s.total;
+      const pct  = increases[i] || 0;
+      const adj  = orig * (1 + pct / 100);
+      const unit = unitPrices[i] || 0;
+      const newUnit = s.category.toUpperCase() === 'PIECE'
+        ? (pcs  ? adj / pcs : 0)
+        : (wgt  ? adj / wgt : 0);
+      const delta = adj - orig;
+  
+      return {
+        ...s,
+        original_postage:   orig,
+        unit_price:         unit,
+        adjustment_pct:     pct,
+        adjusted_postage:   adj,
+        new_unit_price:     newUnit,
+        delta_dollars:      delta
+      };
+    });
+  
+
 
   const tdStyle = { border: '1px solid #ddd', padding: '0.5rem' };
   const thStyle = { padding: '0.5rem' };
@@ -225,34 +298,45 @@ const sumAbsNet = entryName =>
     XLSX.utils.book_append_sheet(wb, wsDetail, 'Details');
 
     // Summary
-    const summaryData = summaryRows.map((s, i) => ({
-      Category: s.category,
-      Entry: s.entry,
-      'Price Category': s.price_category,
-      Pieces: s.pieces,
-      Total: s.total,
-      'Unit Price': unitPrices[i]
-    }));
+        // Summary sheet: include weight & unit price
+        const summaryData = summaryRows.map((s, i) => ({
+          Category:         s.category,
+          Entry:            s.entry,
+          'Price Category': s.price_category,
+          Pieces:           s.pieces,
+          'Weight (lbs)':   s.weight,
+          Total:            s.total,
+          'Unit Price':     unitPrices[i]
+        }));
+
+
     const wsSummary = XLSX.utils.json_to_sheet(summaryData);
     XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
 
     // Adjustments
+        // Adjustments sheet: include weight, and recalc New Total / New Unit Price per row
     const adjustData = summaryRows.map((s, i) => {
-      const up = unitPrices[i];
-      const inc = increases[i] || 0;
-      const newUP = up * (1 + inc / 100);
+      const up        = unitPrices[i];
+      const inc       = increases[i] || 0;
+      const newTotal  = s.total * (1 + inc / 100);
+      const newUnit   = s.category.toUpperCase() === 'PIECE'
+                      ? (s.pieces ? newTotal / s.pieces : 0)
+                       : (s.weight ? newTotal / s.weight : 0);
+
       return {
-        Category: s.category,
-        Entry: s.entry,
+        Category:         s.category,
+        Entry:            s.entry,
         'Price Category': s.price_category,
-        Pieces: s.pieces,
-        Total: s.total,
-        'Unit Price': up,
-        'Increase (%)': inc,
-        'New Total': newUP * s.pieces,
-        'New Unit Price': newUP
+        Pieces:           s.pieces,
+        'Weight (lbs)':   s.weight,
+        Total:            s.total,
+        'Unit Price':     up,
+        'Increase (%)':   inc,
+        'New Total':      newTotal,
+        'New Unit Price': newUnit
       };
     });
+
     const wsAdjust = XLSX.utils.json_to_sheet(adjustData);
     XLSX.utils.book_append_sheet(wb, wsAdjust, 'Adjustments');
 
@@ -434,7 +518,16 @@ const sumAbsNet = entryName =>
           >
             Export to Excel
           </button>
+          
         )}
+
+            <button
+              onClick={() => setShowAudit(v => !v)}
+              style={{ alignSelf: 'flex-end', padding: '0.5rem 1rem', marginLeft: '0.5rem' }}
+            >
+              {showAudit ? 'Hide Audit View' : 'Show Audit View'}
+            </button>
+        
       </div>
 
       {data.length > 0 && summaryRows.length > 0 && (
@@ -471,8 +564,21 @@ const sumAbsNet = entryName =>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead style={{ backgroundColor: '#374151', color: '#fff' }}>
                 <tr>
-                  {['Entry', 'Price Category', 'Pieces', 'Total', 'Unit Price']
-                    .map(h => <th key={h} style={thStyle}>{h}</th>)}
+                                {['Category','Entry','Price Category','Pieces','Weight (lbs)','Total','Unit Price']
+                  .map(h => (
+                    <th
+                      key={h}
+                     style={{
+                        ...thStyle,
+                        position: 'sticky',
+                        top: 0,
+                        backgroundColor: '#374151',
+                        zIndex: 1
+                      }}
+                    >
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -483,13 +589,18 @@ const sumAbsNet = entryName =>
                     : i % 2 === 0
                       ? { backgroundColor: '#f3f4f6' }
                       : {};
+                          const pcs = s.pieces || 0;
+    const wgt = s.weight || 0;
+    const up  = unitPrices[i] || 0;
                   return (
                     <tr key={i} style={rowStyle}>
-                      <td style={tdStyle}>{s.entry}</td>
-                      <td style={tdStyle}>{s.price_category}</td>
-                      <td style={tdStyle}>{s.pieces}</td>
-                      <td style={tdStyle}>{formatCurrency(s.total)}</td>
-                      <td style={tdStyle}>{formatCurrency(unitPrices[i])}</td>
+     <td style={tdStyle}>{s.category}</td>
+     <td style={tdStyle}>{s.entry}</td>
+     <td style={tdStyle}>{s.price_category}</td>
+            <td style={tdStyle}>{pcs}</td>
+        <td style={tdStyle}>{wgt.toFixed(2)}</td>
+        <td style={tdStyle}>{formatCurrency(s.total)}</td>
+        <td style={tdStyle}>{formatCurrency(up)}</td>
                     </tr>
                   );
                 })}
@@ -503,22 +614,46 @@ const sumAbsNet = entryName =>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead style={{ backgroundColor: '#4B5563', color: '#fff' }}>
                 <tr>
-                  {['Category', 'Entry', 'Price Category', 'Pieces', 'Total', 'Unit Price', 'Increase (%)', 'New Total', 'New Unit Price']
-                    .map(h => <th key={h} style={thStyle}>{h}</th>)}
+                                {[
+                  'Category','Entry','Price Category','Pieces','Weight (lbs)',
+                  'Total','Unit Price','Increase (%)','New Total','New Unit Price'
+                ].map(h => (
+                  <th
+                    key={h}
+                    style={{
+                     ...thStyle,
+                      position: 'sticky',
+                      top: 0,
+                      backgroundColor: '#4B5563',
+                      zIndex: 1
+                    }}
+                  >
+                    {h}
+                  </th>
+                ))}
                 </tr>
               </thead>
               <tbody>
-                {summaryRows.map((s, i) => {
-                  const up = unitPrices[i];
-                  const inc = increases[i] || 0;
-                  const newUP = up * (1 + inc / 100);
-                  const newTotal = newUP * s.pieces;
+               {summaryRows.map((s, i) => {
+    const pcs = s.pieces || 0;
+    const wgt = s.weight || 0;
+    const up  = unitPrices[i] || 0;
+    const pct = increases[i] || 0;
+
+    // New total is original total × (1 + pct/100)
+    const newTotal = s.total * (1 + pct/100);
+
+    // New unit price per piece or per lb
+    const newUnit = s.category.toUpperCase() === 'PIECE'
+      ? (pcs ? newTotal/pcs : 0)
+      : (wgt ? newTotal/wgt : 0);
                   return (
                     <tr key={i} style={i % 2 === 0 ? { backgroundColor: '#f9fafb' } : {}}>
                       <td style={tdStyle}>{s.category}</td>
                       <td style={tdStyle}>{s.entry}</td>
                       <td style={tdStyle}>{s.price_category}</td>
                       <td style={tdStyle}>{s.pieces}</td>
+                      <td style={tdStyle}>{s.weight.toFixed(2)}</td>
                       <td style={tdStyle}>{formatCurrency(s.total)}</td>
                       <td style={tdStyle}>{formatCurrency(up)}</td>
                       <td style={tdStyle}>
@@ -530,8 +665,8 @@ const sumAbsNet = entryName =>
                           style={{ width: '4rem', padding: '0.25rem' }}
                         />
                       </td>
-                      <td style={tdStyle}>{formatCurrency(newTotal)}</td>
-                      <td style={tdStyle}>{formatCurrency(newUP)}</td>
+                           <td style={tdStyle}>{formatCurrency(newTotal)}</td>
+                           <td style={tdStyle}>{formatCurrency(newUnit)}</td>
                     </tr>
                   );
                 })}
@@ -570,6 +705,62 @@ const sumAbsNet = entryName =>
               </tbody>
             </table>
           </div>
+
+
+               {/* Audit View */}   
+          {showAudit && (
+  <>
+    <h4 style={{ marginTop: '1rem' }}>Audit View</h4>
+    <div style={{ maxHeight: '300px', overflowY: 'auto', marginBottom: '1rem' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr>
+            {[
+              'Category','Entry','Price Category',
+              'Pieces','Weight (lbs)',
+              'Original Postage','Unit Price',
+              'Increase (%)','Adjusted Postage',
+              'New Unit Price','Delta'
+            ].map(h => (
+              <th
+                key={h}
+                style={{
+                  ...thStyle,
+                  position: 'sticky',
+                  top: 0,
+                  backgroundColor: '#ddd',
+                  zIndex: 1
+                }}
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {auditRows.map((r, i) => (
+            <tr key={i}>
+              <td style={tdStyle}>{r.category}</td>
+              <td style={tdStyle}>{r.entry}</td>
+              <td style={tdStyle}>{r.price_category}</td>
+              <td style={tdStyle}>{r.pieces}</td>
+              <td style={tdStyle}>{r.weight.toFixed(2)}</td>
+              <td style={tdStyle}>{formatCurrency(r.original_postage)}</td>
+              <td style={tdStyle}>{formatCurrency(r.unit_price)}</td>
+              <td style={tdStyle}>{r.adjustment_pct}%</td>
+              <td style={tdStyle}>{formatCurrency(r.adjusted_postage)}</td>
+              <td style={tdStyle}>{formatCurrency(r.new_unit_price)}</td>
+              <td style={tdStyle}>{formatCurrency(r.delta_dollars)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </>
+)}
+
+
+
         </>
       )}
 
