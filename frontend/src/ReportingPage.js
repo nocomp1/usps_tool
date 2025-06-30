@@ -59,7 +59,7 @@ export default function ReportingPage() {
     const jobId = e.target.value;
     setSelectedJobId(jobId);
 
-    // Clear summary if nothing selected
+    // Clear summary if nothing selected--
     if (!jobId) {
       setPromoSummary(null);
       return;
