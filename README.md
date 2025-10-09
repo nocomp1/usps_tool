@@ -219,4 +219,3 @@ Private, internal tooling for Lithographix. Contact the maintainer for reuse per
 
 ---
 
-If you want, I can tailor this to your exact routes (copying the real paths and field names) and add a mini OpenAPI section—just say the word.
