@@ -2,7 +2,7 @@ import os
 from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import inspect, text, func, and_, desc
+from sqlalchemy import inspect, text, func, and_, desc, case
 
 
 app = Flask(__name__, static_folder="static", static_url_path="")
@@ -313,25 +313,52 @@ def summary_by_entry():
     if end:
         proj_filters.append(Project.date <= end)
 
+  
+
     q = (
-        db.session.query(
-            TransactionDetail.category,
-            TransactionDetail.entry,
-            TransactionDetail.price_category,
-            func.sum(TransactionDetail.number_of_pieces).label('pieces'),
-            func.sum(TransactionDetail.net_postage).label('total')
-        )
-        .join(Project, Project.id == TransactionDetail.project_id)
-        .filter(and_(*proj_filters))
-        .group_by(TransactionDetail.entry, TransactionDetail.price_category)
-        .order_by(TransactionDetail.entry, desc(func.sum(TransactionDetail.net_postage)))
-        .all()
+    db.session.query(
+        TransactionDetail.category,
+        TransactionDetail.entry,
+        TransactionDetail.price_category,
+
+        # total pieces for PIECE rows (handles any casing)
+        func.sum(
+            case(
+                (
+                    func.upper(TransactionDetail.category) == 'PIECE',
+                    TransactionDetail.number_of_pieces
+                ),
+                else_=0
+            )
+        ).label('pieces'),
+
+        # total weight for POUND rows (quantity × piece_weight), any casing
+       func.sum(
+         case(
+           (func.upper(TransactionDetail.category)=='POUND',
+            TransactionDetail.number_of_pieces * Project.piece_weight),
+           else_=0
+         )
+       ).label('weight'),
+
+        # total postage for both categories
+        func.sum(TransactionDetail.net_postage).label('total'),
     )
+    .join(Project, Project.id == TransactionDetail.project_id)
+    .filter(*proj_filters)
+    .group_by(
+        TransactionDetail.category,
+        TransactionDetail.entry,
+        TransactionDetail.price_category,
+    )
+)
+
     result = [{
         'category':       row.category,
         'entry':          row.entry,
         'price_category': row.price_category,
         'pieces':         int(row.pieces),
+        'weight':         float(row.weight), 
         'total':          float(row.total)
     } for row in q]
     return jsonify(result)

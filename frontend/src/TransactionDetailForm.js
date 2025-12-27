@@ -77,7 +77,7 @@ export default function TransactionDetailForm() {
 
                 // extract any custom entries they’ve used
                 const usedEntries = filtered
-                    .map(tx => tx.entry)
+                    .map(tx => tx.entry?.trim())
                     .filter(e => !defaultEntryOptions.includes(e));
                 const uniqueCustom = Array.from(new Set(usedEntries));
 
@@ -162,7 +162,7 @@ export default function TransactionDetailForm() {
             const all = await fetch('/transactions').then(r => r.json());
             const filtered = all.filter(tx => String(tx.project_id) === selectedProjectId);
             const usedEntries = filtered
-                .map(tx => tx.entry)
+                .map(tx => tx.entry?.trim())
                 .filter(e => !defaultEntryOptions.includes(e));
             const uniqueCustom = Array.from(new Set(usedEntries));
             setEntryOptions([...defaultEntryOptions, ...uniqueCustom]);
@@ -192,7 +192,7 @@ export default function TransactionDetailForm() {
             const all = await fetch('/transactions').then(r => r.json());
             const filtered = all.filter(tx => String(tx.project_id) === selectedProjectId);
             const usedEntries = filtered
-                .map(tx => tx.entry)
+                .map(tx => tx.entry?.trim())
                 .filter(e => !defaultEntryOptions.includes(e));
             const uniqueCustom = Array.from(new Set(usedEntries));
             setEntryOptions([...defaultEntryOptions, ...uniqueCustom]);

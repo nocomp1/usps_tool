@@ -93,14 +93,14 @@ export default function CreateProjectForm({ onCreate }) {
             .then(r => r.json())
             .then(data => {
                 const customFormats = Array.from(
-                    new Set(data.map(p => p.format).filter(f => f && !defaultFormatOptions.includes(f)))
+                    new Set(data.map(p => p.format?.trim()).filter(f => f && !defaultFormatOptions.includes(f)))
                 );
                 setFormatOptions([...defaultFormatOptions, ...customFormats]);
 
                 const customQualifications = Array.from(
                     new Set(
                         data
-                            .map(p => p.qualifications)
+                            .map(p => p.qualifications?.trim())
                             .filter(q => q && !defaultQualificationOptions.includes(q))
                     )
                 );
@@ -112,7 +112,7 @@ export default function CreateProjectForm({ onCreate }) {
 
 
                 const customPageCounts = Array.from(
-                    new Set(data.map(p => p.page_count?.toString()).filter(pc => pc && !defaultPageCountOptions.includes(pc)))
+                    new Set(data.map(p => p.page_count?.toString().trim()).filter(pc => pc && !defaultPageCountOptions.includes(pc)))
                 );
                 setPageCountOptions([...defaultPageCountOptions, ...customPageCounts]);
 
@@ -128,9 +128,9 @@ export default function CreateProjectForm({ onCreate }) {
                     totalPostage: p.total_postage,
                     netPostage: p.net_postage,
                     discount: p.discount || 0.0,
-                    format: p.format || defaultFormatOptions[0],
-                    pageCount: p.page_count?.toString() || defaultPageCountOptions[0],
-                    qualifications: p.qualifications || defaultQualificationOptions[0],
+                    format: p.format?.trim() || defaultFormatOptions[0],
+                    pageCount: p.page_count?.toString().trim() || defaultPageCountOptions[0],
+                    qualifications: p.qualifications?.trim() || defaultQualificationOptions[0],
                 }));
                 setRows([blankRow(), ...existing]);
             })
